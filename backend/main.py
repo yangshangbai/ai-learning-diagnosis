@@ -5,8 +5,10 @@ Creates the database tables on startup, seeds data if empty,
 configures CORS middleware, and includes API routers.
 """
 
+import os
 from contextlib import asynccontextmanager
 from datetime import datetime
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,6 +16,21 @@ from fastapi.responses import JSONResponse
 
 from config import settings
 from database import init_db, engine
+
+# ---------------------------------------------------------------------------
+# Version — 从 VERSION 文件读取，用于自动修复时增量更新
+# ---------------------------------------------------------------------------
+_VERSION_FILE = Path(__file__).resolve().parent.parent / "VERSION"
+
+
+def _read_version() -> str:
+    try:
+        return _VERSION_FILE.read_text().strip()
+    except Exception:
+        return "1.0.0"
+
+
+APP_VERSION = _read_version()
 
 
 # ---------------------------------------------------------------------------
@@ -39,7 +56,7 @@ async def lifespan(app: FastAPI):
 # ---------------------------------------------------------------------------
 app = FastAPI(
     title="AI学习诊断系统",
-    version="1.0.0",
+    version=APP_VERSION,
     description="面向培训机构的AI学习诊断与个性化练习系统",
     lifespan=lifespan,
 )
@@ -63,7 +80,7 @@ app.add_middleware(
 @app.get("/api/health")
 async def health():
     """Health check endpoint."""
-    return {"status": "ok", "version": "1.0.0"}
+    return {"status": "ok", "version": APP_VERSION}
 
 
 # ---------------------------------------------------------------------------
