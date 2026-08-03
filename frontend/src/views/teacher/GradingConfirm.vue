@@ -213,8 +213,8 @@ async function loadData() {
   const taskId = route.params.taskId
   try {
     const res = await diagnosesAPI.getList({ task_id: taskId })
-    const data = res.data || res || []
-    if (data.length) {
+    const data = res?.items || res?.data || res
+    if (Array.isArray(data) && data.length) {
       diags.value = JSON.parse(JSON.stringify(data))
     } else {
       diags.value = getMockDiagnoses()
@@ -314,7 +314,7 @@ async function batchConfirm() {
       conf.value[i] = true
     }
   })
-  const highConfIds = diags.value.filter(d => d.confidence >= 0.6).map(d => d.id || ('diag_' + d.num))
+  const highConfIds = diags.value.filter(d => d.confidence >= 0.6).map(d => Number(d.id || d.diagnosis_id || 0) || ('diag_' + d.num))
   try {
     await diagnosesAPI.batchConfirm({
       diagnosis_ids: highConfIds,
