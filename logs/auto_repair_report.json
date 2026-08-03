@@ -1,10 +1,39 @@
 {
-  "run_at": "2026-08-03T02:48:14.560592+00:00",
-  "total_errors": 80,
-  "program_bugs": 0,
+  "run_at": "2026-08-03T02:59:11.759874",
+  "total_errors": 82,
+  "program_bugs": 2,
   "non_program_issues": 80,
   "auto_fixable": 0,
-  "bugs_detail": [],
+  "bugs_detail": [
+    {
+      "id": 360,
+      "timestamp": "2026-07-31 19:33:38.281516",
+      "endpoint": "#/teacher/report/3",
+      "method": "RENDER",
+      "error_type": "TypeError",
+      "error_message": "v.value.filter is not a function",
+      "is_bug": true,
+      "category": "TypeError",
+      "note": "HIGH",
+      "stack_files": [],
+      "auto_fixable": false,
+      "fix_action": null
+    },
+    {
+      "id": 361,
+      "timestamp": "2026-07-31 19:35:01.547836",
+      "endpoint": "#/teacher/report/3",
+      "method": "RENDER",
+      "error_type": "TypeError",
+      "error_message": "v.value.filter is not a function",
+      "is_bug": true,
+      "category": "TypeError",
+      "note": "HIGH",
+      "stack_files": [],
+      "auto_fixable": false,
+      "fix_action": null
+    }
+  ],
   "non_bugs_detail": [
     {
       "id": 313,
@@ -141,14 +170,6 @@
     {
       "id": 359,
       "note": "客户端认证失败（Token缺失/过期/无效），非程序Bug"
-    },
-    {
-      "id": 360,
-      "note": "无法自动分类，标记为非程序问题（保守策略）"
-    },
-    {
-      "id": 361,
-      "note": "无法自动分类，标记为非程序问题（保守策略）"
     },
     {
       "id": 362,
@@ -324,6 +345,14 @@
     },
     {
       "id": 405,
+      "note": "客户端认证失败（Token缺失/过期/无效），非程序Bug"
+    },
+    {
+      "id": 406,
+      "note": "客户端认证失败（Token缺失/过期/无效），非程序Bug"
+    },
+    {
+      "id": 407,
       "note": "客户端认证失败（Token缺失/过期/无效），非程序Bug"
     }
   ],

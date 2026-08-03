@@ -266,7 +266,7 @@ def generate_repair_summary(analyses: list[dict]) -> dict:
     auto_fixable = [a for a in analyses if a.get("auto_fixable")]
 
     return {
-        "run_at": datetime.now(timezone.utc).isoformat(),
+        "run_at": datetime.utcnow().isoformat(),
         "total_errors": total,
         "program_bugs": len(bugs),
         "non_program_issues": len(non_bugs),
@@ -331,19 +331,15 @@ async def mark_repaired(session, error_id: int, note: str, repaired_by: str = "a
         .values(
             repair=True,
             repair_note=note,
-            repaired_at=datetime.now(timezone.utc),
+            repaired_at=datetime.utcnow(),
             repaired_by=repaired_by,
         )
     )
 
 
-async def apply_repairs(errors_data: list[dict], analyses: list[dict], dry_run: bool = False):
-    """应用修复：标记非Bug为已修复，记录Bug信息。"""
-    import os
-    from dotenv import load_dotenv
-    load_dotenv(BACKEND_DIR / ".env")
-
-    sys.path.insert(0, str(BACKEND_DIR))
+async def apply_repairs(analyses: list[dict], dry_run: bool = False):
+    """应用修复：标记非Bug为已修复，记录Bug信息。
+    注意：必须在已经激活的事件循环中调用。"""
     from database import async_session_factory
     from models.error_log import ErrorLog
     from sqlalchemy import select, update
@@ -352,13 +348,11 @@ async def apply_repairs(errors_data: list[dict], analyses: list[dict], dry_run: 
     async with async_session_factory() as session:
         for analysis in analyses:
             if analysis["is_bug"]:
-                # 程序Bug：记录但不自动标记修复
-                # 如果有自动修复方案，在日志中注明
-                if analysis.get("auto_fixable"):
-                    note = f"[待修复] {analysis['category']}: {analysis['fix_action']['description']}"
-                else:
-                    note = f"[待人工修复] {analysis['category']}: 需手动排查 {analysis['error_message'][:100]}"
-                # Bug 暂不标记 repair=True，留给人工确认
+                note = (
+                    f"[待修复] {analysis['category']}: {analysis['fix_action']['description']}"
+                    if analysis.get("auto_fixable") and analysis.get("fix_action")
+                    else f"[待人工修复] {analysis['category']}: 需手动排查 {analysis['error_message'][:100]}"
+                )
                 if not dry_run:
                     await session.execute(
                         update(ErrorLog)
@@ -366,7 +360,6 @@ async def apply_repairs(errors_data: list[dict], analyses: list[dict], dry_run: 
                         .values(repair_note=note)
                     )
             else:
-                # 非程序问题：直接标记 Repair=True
                 if not dry_run:
                     await mark_repaired(session, analysis["id"], analysis["note"])
                 marked += 1
@@ -375,6 +368,86 @@ async def apply_repairs(errors_data: list[dict], analyses: list[dict], dry_run: 
             await session.commit()
 
     return marked
+
+
+async def run_full_pipeline(dry_run: bool = False, auto_fix: bool = False, verbose: bool = False):
+    """在单个事件循环中运行完整的分析+修复流程。"""
+    print("=" * 60)
+    print(f"  AI学习诊断系统 — 自动错误修复")
+    print(f"  运行时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"  模式: {'DRY-RUN (仅分析)' if dry_run else 'LIVE (执行修复)'}")
+    print("=" * 60)
+
+    # 1. 获取未修复错误
+    print("\n[1/4] 查询未修复错误...")
+    errors = await fetch_unrepaired_errors()
+    print(f"  发现 {len(errors)} 条 Repair=False 的错误")
+
+    if not errors:
+        print("  ✅ 没有需要修复的错误")
+        return
+
+    # 2. 分析每条错误
+    print("\n[2/4] 智能分类错误...")
+    analyses = []
+    bug_count = 0
+    non_bug_count = 0
+
+    for err in errors:
+        analysis = analyze_error(err)
+        analyses.append(analysis)
+        if verbose:
+            flag = "🐛 BUG" if analysis["is_bug"] else "✅ OK"
+            print(f"  [{flag}] #{analysis['id']} {analysis['error_type']}: "
+                  f"{analysis['error_message'][:80]}")
+        if analysis["is_bug"]:
+            bug_count += 1
+        else:
+            non_bug_count += 1
+
+    print(f"  程序Bug: {bug_count} 条")
+    print(f"  非程序问题: {non_bug_count} 条 (将自动标记为已修复)")
+
+    # 3. 尝试自动修复
+    if auto_fix:
+        print("\n[3/4] 尝试自动修复程序Bug...")
+        fixed = 0
+        for analysis in analyses:
+            if analysis.get("auto_fixable") and analysis.get("fix_action"):
+                fix = analysis["fix_action"]
+                print(f"  → #{analysis['id']} {fix['description']}")
+                if not dry_run:
+                    success = apply_code_fix(fix)
+                    if success:
+                        fixed += 1
+        print(f"  自动修复: {fixed} 处")
+    else:
+        print("\n[3/4] 跳过自动修复 (使用 --auto-fix 启用)")
+
+    # 4. 应用标记修复（在同一个事件循环中）
+    print("\n[4/4] 更新数据库修复标记...")
+    if dry_run:
+        print(f"  [DRY-RUN] 将标记 {non_bug_count} 条为非Bug已修复")
+    else:
+        marked = await apply_repairs(analyses, dry_run=False)
+        print(f"  已标记 {marked} 条为非程序问题 (Repair=True)")
+
+    # 生成报告
+    summary = generate_repair_summary(analyses)
+    REPORT_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with open(REPORT_FILE, "w", encoding="utf-8") as f:
+        json.dump(summary, f, ensure_ascii=False, indent=2)
+    print(f"\n📄 报告已保存: {REPORT_FILE}")
+
+    print("\n" + "=" * 60)
+    print(f"  处理完成!")
+    print(f"  ✅ 自动标记修复: {non_bug_count} 条")
+    if auto_fix:
+        auto = len([a for a in analyses if a.get("auto_fixable")])
+        print(f"  🔧 可自动修复: {auto} 条")
+    print(f"  ⚠️  待人工处理: {bug_count} 条")
+    print(f"  📄 详细报告: {REPORT_FILE}")
+    print("=" * 60)
 
 
 # ---------------------------------------------------------------------------
@@ -484,86 +557,17 @@ def main():
     LOCK_FILE.touch()
 
     try:
-        print("=" * 60)
-        print(f"  AI学习诊断系统 — 自动错误修复")
-        print(f"  运行时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"  模式: {'DRY-RUN (仅分析)' if args.dry_run else 'LIVE (执行修复)'}")
-        print("=" * 60)
+        # 初始化环境
+        sys.path.insert(0, str(BACKEND_DIR))
+        from dotenv import load_dotenv
+        load_dotenv(BACKEND_DIR / ".env")
 
-        # 1. 获取未修复错误
-        print("\n[1/4] 查询未修复错误...")
-        errors = asyncio.run(fetch_unrepaired_errors())
-        print(f"  发现 {len(errors)} 条 Repair=False 的错误")
-
-        if not errors:
-            print("  ✅ 没有需要修复的错误")
-            LOCK_FILE.unlink()
-            return
-
-        # 2. 分析每条错误
-        print("\n[2/4] 智能分类错误...")
-        analyses = []
-        bug_count = 0
-        non_bug_count = 0
-
-        for err in errors:
-            analysis = analyze_error(err)
-            analyses.append(analysis)
-
-            if args.verbose:
-                flag = "🐛 BUG" if analysis["is_bug"] else "✅ OK"
-                print(f"  [{flag}] #{analysis['id']} {analysis['error_type']}: "
-                      f"{analysis['error_message'][:80]}")
-
-            if analysis["is_bug"]:
-                bug_count += 1
-            else:
-                non_bug_count += 1
-
-        print(f"  程序Bug: {bug_count} 条")
-        print(f"  非程序问题: {non_bug_count} 条 (将自动标记为已修复)")
-
-        # 3. 尝试自动修复
-        if args.auto_fix:
-            print("\n[3/4] 尝试自动修复程序Bug...")
-            fixed = 0
-            for analysis in analyses:
-                if analysis.get("auto_fixable") and analysis.get("fix_action"):
-                    fix = analysis["fix_action"]
-                    print(f"  → #{analysis['id']} {fix['description']}")
-                    if not args.dry_run:
-                        success = apply_code_fix(fix)
-                        if success:
-                            fixed += 1
-            print(f"  自动修复: {fixed} 处")
-        else:
-            print("\n[3/4] 跳过自动修复 (使用 --auto-fix 启用)")
-
-        # 4. 应用标记修复
-        print("\n[4/4] 更新数据库修复标记...")
-        if args.dry_run:
-            print(f"  [DRY-RUN] 将标记 {non_bug_count} 条为非Bug已修复")
-        else:
-            marked = asyncio.run(apply_repairs(errors, analyses, dry_run=False))
-            print(f"  已标记 {marked} 条为非程序问题 (Repair=True)")
-
-        # 生成报告
-        summary = generate_repair_summary(analyses)
-        REPORT_FILE.parent.mkdir(parents=True, exist_ok=True)
-        with open(REPORT_FILE, "w", encoding="utf-8") as f:
-            json.dump(summary, f, ensure_ascii=False, indent=2)
-        print(f"\n📄 报告已保存: {REPORT_FILE}")
-
-        # 摘要
-        print("\n" + "=" * 60)
-        print(f"  处理完成!")
-        print(f"  ✅ 自动标记修复: {non_bug_count} 条")
-        if args.auto_fix:
-            auto = len([a for a in analyses if a.get("auto_fixable")])
-            print(f"  🔧 可自动修复: {auto} 条")
-        print(f"  ⚠️  待人工处理: {bug_count} 条")
-        print(f"  📄 详细报告: {REPORT_FILE}")
-        print("=" * 60)
+        # 在单个事件循环中运行所有异步操作
+        asyncio.run(run_full_pipeline(
+            dry_run=args.dry_run,
+            auto_fix=args.auto_fix,
+            verbose=args.verbose,
+        ))
 
     except Exception as e:
         print(f"\n[FATAL] 脚本执行错误: {e}")
