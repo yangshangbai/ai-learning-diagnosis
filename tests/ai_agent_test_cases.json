@@ -1,0 +1,399 @@
+{
+  "_meta": {
+    "version": "1.0.0",
+    "created": "2026-07-20",
+    "project": "AI学习诊断与个性化练习系统",
+    "base_url": "http://localhost:8001",
+    "frontend_url": "http://localhost:5173",
+    "description": "AI多Agent模拟用户测试用例。每次功能修改后必须检查并更新此文件，新增测点追加到对应角色模块末尾。",
+    "update_rules": [
+      "新增页面 → 在对应角色下添加 test_group",
+      "新增按钮/操作 → 在对应页面下添加 test_case",
+      "新增API → 添加 API验证步骤",
+      "新增角色 → 复制最相近角色的test_group并修改",
+      "废弃功能 → 标记 deprecated: true，不要删除",
+      "版本号递增规则: 主版本.新增测点.修复编号"
+    ],
+    "test_accounts": {
+      "teacher_math_g5": {"phone": "13800001111", "password": "demo123", "role": "teacher", "name": "李老师"},
+      "teacher_physics_g8": {"phone": "13800004444", "password": "demo123", "role": "teacher", "name": "赵老师"},
+      "admin": {"phone": "13900001111", "password": "demo123", "role": "admin", "name": "王校长"},
+      "research": {"phone": "13900002222", "password": "demo123", "role": "research", "name": "赵教研"},
+      "super": {"phone": "13900003333", "password": "demo123", "role": "super", "name": "超级管理员"}
+    }
+  },
+
+  "test_suites": {
+
+    "AUTH": {
+      "description": "登录认证测试",
+      "test_cases": [
+        {"id": "AUTH-001", "action": "POST /api/auth/login with valid phone+password", "expect": "200 + access_token + user object", "api": "POST /api/auth/login"},
+        {"id": "AUTH-002", "action": "POST /api/auth/login with wrong password", "expect": "401 手机号或密码错误", "api": "POST /api/auth/login"},
+        {"id": "AUTH-003", "action": "POST /api/auth/login with non-existent phone", "expect": "401", "api": "POST /api/auth/login"},
+        {"id": "AUTH-004", "action": "GET /api/auth/me with valid token", "expect": "200 + user profile", "api": "GET /api/auth/me"},
+        {"id": "AUTH-005", "action": "GET /api/auth/me with invalid token", "expect": "401 无效的认证凭证", "api": "GET /api/auth/me"},
+        {"id": "AUTH-006", "action": "GET /api/auth/me with no token", "expect": "403", "api": "GET /api/auth/me"},
+        {"id": "AUTH-007", "action": "Frontend: select account from dropdown → click 进入系统", "expect": "Redirect to role-specific home page", "frontend": "LoginPage: select→login→redirect"},
+        {"id": "AUTH-008", "action": "Frontend: click login with no account selected", "expect": "Button disabled (can't click)", "frontend": "LoginPage: disabled state"},
+        {"id": "AUTH-009", "action": "Frontend: enter key on password field", "expect": "Trigger login", "frontend": "LoginPage: @keyup.enter"}
+      ]
+    },
+
+    "TEACHER_STUDENTS": {
+      "description": "老师端 - 学生列表页 /teacher/students",
+      "role": "teacher",
+      "test_cases": [
+        {"id": "T-STU-001", "action": "Navigate to /teacher/students", "expect": "Page loads with student cards, BottomNav active=students", "api": "GET /api/students, GET /api/classes"},
+        {"id": "T-STU-002", "action": "Click class filter pill", "expect": "Student list filters by selected class", "frontend": "StudentList: class filter"},
+        {"id": "T-STU-003", "action": "Click '全部' filter", "expect": "All students shown", "frontend": "StudentList: clear filter"},
+        {"id": "T-STU-004", "action": "Click student card", "expect": "Navigate to /teacher/student/:id", "frontend": "StudentList: goProfile()"},
+        {"id": "T-STU-005", "action": "Verify student card shows mastery% color-coded", "expect": "Green >=80, Yellow >=60, Red <60", "frontend": "StudentList: mastery color"},
+        {"id": "T-STU-006", "action": "Verify BottomNav has 5 tabs: 学生/任务/上传/练习/我的", "expect": "All 5 tabs visible, 学生 active", "frontend": "StudentList: BottomNav"},
+        {"id": "T-STU-007", "action": "Click BottomNav: 任务", "expect": "Navigate to /teacher/tasks", "frontend": "StudentList: nav"},
+        {"id": "T-STU-008", "action": "Click BottomNav: 上传", "expect": "Navigate to /teacher/upload", "frontend": "StudentList: nav"},
+        {"id": "T-STU-009", "action": "Click BottomNav: 练习", "expect": "Navigate to /teacher/exercise", "frontend": "StudentList: nav"},
+        {"id": "T-STU-010", "action": "Click BottomNav: 我的", "expect": "Navigate to /teacher/me", "frontend": "StudentList: nav"}
+      ]
+    },
+
+    "TEACHER_STUDENT_PROFILE": {
+      "description": "老师端 - 学生档案页 /teacher/student/:id",
+      "role": "teacher",
+      "test_cases": [
+        {"id": "T-PRO-001", "action": "Navigate to /teacher/student/1", "expect": "Student header card with name/class/mastery/weak points", "api": "GET /api/students/1"},
+        {"id": "T-PRO-002", "action": "Click tab: 趋势", "expect": "ECharts line chart renders", "frontend": "StudentProfile: trend tab"},
+        {"id": "T-PRO-003", "action": "Click tab: 能力", "expect": "ECharts radar chart renders with 7 dimensions", "frontend": "StudentProfile: ability tab"},
+        {"id": "T-PRO-004", "action": "Click tab: 错因", "expect": "Bar chart of error causes displayed", "frontend": "StudentProfile: errors tab"},
+        {"id": "T-PRO-005", "action": "Click tab: 错题", "expect": "Wrong diagnosis cards with verdict tags + AI suggestions", "api": "GET /api/diagnosis?student_id=1"},
+        {"id": "T-PRO-006", "action": "Click tab: 练习", "expect": "Exercise plan list or empty state", "api": "GET /api/exercises?student_id=1"},
+        {"id": "T-PRO-007", "action": "Click tab: 记录", "expect": "Task history list", "api": "GET /api/tasks"},
+        {"id": "T-PRO-008", "action": "Click '生成练习' bottom button", "expect": "Navigate to /teacher/exercise", "frontend": "StudentProfile: bottom bar"},
+        {"id": "T-PRO-009", "action": "Click '阶段报告' bottom button", "expect": "Navigate to /teacher/report/:studentId", "frontend": "StudentProfile: bottom bar"},
+        {"id": "T-PRO-010", "action": "Click '分享' button", "expect": "Clipboard copy or HTML download triggered", "frontend": "StudentProfile: share"},
+        {"id": "T-PRO-011", "action": "Click '刷新' button", "expect": "All data reloaded, toast '数据已刷新'", "frontend": "StudentProfile: refresh"}
+      ]
+    },
+
+    "TEACHER_TASKS": {
+      "description": "老师端 - 任务列表页 /teacher/tasks",
+      "role": "teacher",
+      "test_cases": [
+        {"id": "T-TSK-001", "action": "Navigate to /teacher/tasks", "expect": "Task cards with status tags, progress bars", "api": "GET /api/tasks"},
+        {"id": "T-TSK-002", "action": "Click '+ 新建' button", "expect": "CrudModal opens with form fields", "frontend": "TaskList: create modal"},
+        {"id": "T-TSK-003", "action": "Fill form: name/type/subject/grade/class/pages/objective/difficulty → Save", "expect": "Task created, appears in list", "api": "POST /api/tasks → 200"},
+        {"id": "T-TSK-004", "action": "Create task with empty name → Save", "expect": "Validation error or API reject", "frontend": "TaskList: validation"},
+        {"id": "T-TSK-005", "action": "Click '编辑' on draft task", "expect": "CrudModal opens pre-filled with task data", "frontend": "TaskList: edit modal"},
+        {"id": "T-TSK-006", "action": "Change task name in edit modal → Save", "expect": "Task name updated in list", "api": "PUT /api/tasks/:id → 200"},
+        {"id": "T-TSK-007", "action": "Click '详情' on task", "expect": "Inline detail card expands with full task info", "frontend": "TaskList: detail"},
+        {"id": "T-TSK-008", "action": "Click '上传试卷' on pending_upload task", "expect": "Navigate to /teacher/upload?taskId=X", "frontend": "TaskList: goUpload"},
+        {"id": "T-TSK-009", "action": "Click '确认批改' on pending_review task", "expect": "Navigate to /teacher/grading/:taskId", "frontend": "TaskList: goReview"},
+        {"id": "T-TSK-010", "action": "Click delete icon on draft task → confirm → delete", "expect": "Task removed from list", "api": "DELETE /api/tasks/:id → 200"},
+        {"id": "T-TSK-011", "action": "Try delete task with diagnoses", "expect": "409 该任务已有诊断结果", "api": "DELETE /api/tasks/1 → 409"}
+      ]
+    },
+
+    "TEACHER_UPLOAD": {
+      "description": "老师端 - 上传试卷页 /teacher/upload",
+      "role": "teacher",
+      "test_cases": [
+        {"id": "T-UPL-001", "action": "Navigate to /teacher/upload", "expect": "Step 1: task selection list", "api": "GET /api/tasks, GET /api/students"},
+        {"id": "T-UPL-002", "action": "Click a pending task", "expect": "Step 2: upload UI with answer slots", "frontend": "UploadPaper: selectTask"},
+        {"id": "T-UPL-003", "action": "Click answer page slot → select image file", "expect": "Thumbnail preview appears, file auto-uploaded to backend", "api": "POST /api/upload/:taskId → 200"},
+        {"id": "T-UPL-004", "action": "Upload non-image file", "expect": "Toast error '仅支持图片文件'", "frontend": "UploadPaper: validation"},
+        {"id": "T-UPL-005", "action": "Upload file >10MB", "expect": "Toast error '文件大小不能超过10MB'", "frontend": "UploadPaper: validation"},
+        {"id": "T-UPL-006", "action": "Upload all answer pages", "expect": "Green success banner + student upload section appears", "frontend": "UploadPaper: answerDone"},
+        {"id": "T-UPL-007", "action": "Select student from dropdown", "expect": "Student paper upload slots appear", "frontend": "UploadPaper: selStudent"},
+        {"id": "T-UPL-008", "action": "Toggle 逐面上传/批量识别", "expect": "Mode toggle works, batch shows AI preview card", "frontend": "UploadPaper: uploadMode"},
+        {"id": "T-UPL-009", "action": "Upload all student pages → click 提交批改", "expect": "Step 3: AI processing progress bar", "api": "POST /api/tasks/:id/run-ai"},
+        {"id": "T-UPL-010", "action": "Click '查看诊断结果'", "expect": "Navigate to /teacher/grading/:taskId", "frontend": "UploadPaper: goGrading"},
+        {"id": "T-UPL-011", "action": "Close page → reopen → select same task", "expect": "Previously uploaded images restored", "api": "GET /api/upload/:taskId/files → 200 + previews"}
+      ]
+    },
+
+    "TEACHER_GRADING": {
+      "description": "老师端 - 批改确认页 /teacher/grading/:taskId",
+      "role": "teacher",
+      "test_cases": [
+        {"id": "T-GRD-001", "action": "Navigate to /teacher/grading/1", "expect": "Split view: question nav + diagnosis cards", "api": "GET /api/diagnosis?task_id=1"},
+        {"id": "T-GRD-002", "action": "Click question number dot", "expect": "That question's diagnosis card shows", "frontend": "GradingConfirm: question nav"},
+        {"id": "T-GRD-003", "action": "Change verdict dropdown for a question", "expect": "reactive update visible", "frontend": "GradingConfirm: verdict"},
+        {"id": "T-GRD-004", "action": "Change error cause (knowledge layer)", "expect": "Dropdown options populated, selection works", "frontend": "GradingConfirm: errorCause"},
+        {"id": "T-GRD-005", "action": "Change error cause (ability layer)", "expect": "Dropdown options populated, selection works", "frontend": "GradingConfirm: skillCause"},
+        {"id": "T-GRD-006", "action": "Edit OCR text textarea", "expect": "Text changes persist in reactive state", "frontend": "GradingConfirm: ocrText"},
+        {"id": "T-GRD-007", "action": "Edit wrong step textarea", "expect": "Text changes persist", "frontend": "GradingConfirm: wrongStep"},
+        {"id": "T-GRD-008", "action": "Add teacher note", "expect": "Note appears in textarea", "frontend": "GradingConfirm: teacherNote"},
+        {"id": "T-GRD-009", "action": "Check '标记为典型错题'", "expect": "Checkbox toggles", "frontend": "GradingConfirm: isTypical"},
+        {"id": "T-GRD-010", "action": "Click '确认本题'", "expect": "Advances to next question, API called", "api": "PUT /api/diagnosis/:id → 200"},
+        {"id": "T-GRD-011", "action": "Click '下一题' without confirming", "expect": "Advances without saving to API", "frontend": "GradingConfirm: next"},
+        {"id": "T-GRD-012", "action": "Click '全部确认(X/Y)'", "expect": "Batch confirms high-confidence items", "api": "POST /api/diagnosis/batch-confirm → 200"},
+        {"id": "T-GRD-013", "action": "Verify low-confidence (<60%) warning card", "expect": "Yellow warning card visible for low-confidence items", "frontend": "GradingConfirm: confidence warning"}
+      ]
+    },
+
+    "TEACHER_EXERCISE": {
+      "description": "老师端 - 个性化练习页 /teacher/exercise",
+      "role": "teacher",
+      "test_cases": [
+        {"id": "T-EXR-001", "action": "Navigate to /teacher/exercise", "expect": "AI suggestion card + plan list", "api": "GET /api/exercises, GET /api/students"},
+        {"id": "T-EXR-002", "action": "Click '刷新分析' on AI card", "expect": "AI suggestion refreshes from API", "api": "POST /api/ai/suggest"},
+        {"id": "T-EXR-003", "action": "Fill new plan form: student/KP/count/difficulty/freq → 智能生成", "expect": "Plan created and appears in list", "api": "POST /api/exercises → 200"},
+        {"id": "T-EXR-004", "action": "Click '预览' on a plan", "expect": "Preview bottom-sheet modal with plan details", "frontend": "ExercisePlan: preview"},
+        {"id": "T-EXR-005", "action": "Click '导出PDF' on a plan", "expect": "Print dialog or HTML download triggered", "frontend": "ExercisePlan: export"},
+        {"id": "T-EXR-006", "action": "Click '编辑' on a plan → change values → save", "expect": "Plan updated in list", "api": "PUT /api/exercises/:id → 200"},
+        {"id": "T-EXR-007", "action": "Click '删除' on a plan → confirm", "expect": "Plan removed from list", "api": "DELETE /api/exercises/:id → 200"},
+        {"id": "T-EXR-008", "action": "Create plan with no student selected", "expect": "Validation prevents or API rejects", "frontend": "ExercisePlan: validation"}
+      ]
+    },
+
+    "TEACHER_REPORT": {
+      "description": "老师端 - 阶段报告页 /teacher/report/:studentId",
+      "role": "teacher",
+      "test_cases": [
+        {"id": "T-RPT-001", "action": "Navigate to /teacher/report/1", "expect": "Student info + KPI cards + comment area", "api": "GET /api/students/1, GET /api/diagnosis?student_id=1"},
+        {"id": "T-RPT-002", "action": "Verify KPI correct rate is computed from diagnoses", "expect": "Correct rate matches correct/total ratio", "frontend": "StageReport: KPIs"},
+        {"id": "T-RPT-003", "action": "Type in teacher comment textarea → click 保存评语", "expect": "API saves report, toast confirmation", "api": "PUT /api/students/1/report → 200"},
+        {"id": "T-RPT-004", "action": "Add a recommendation item → select type → input text", "expect": "New recommendation appears in list", "frontend": "StageReport: add rec"},
+        {"id": "T-RPT-005", "action": "Remove a recommendation item", "expect": "Item removed from list", "frontend": "StageReport: remove rec"},
+        {"id": "T-RPT-006", "action": "Click '导出' button", "expect": "HTML blob downloaded", "frontend": "StageReport: export"},
+        {"id": "T-RPT-007", "action": "Change stage name / date range", "expect": "Fields update reactively", "frontend": "StageReport: stage config"}
+      ]
+    },
+
+    "TEACHER_PROFILE": {
+      "description": "老师端 - 个人中心 /teacher/me",
+      "role": "teacher",
+      "test_cases": [
+        {"id": "T-ME-001", "action": "Navigate to /teacher/me", "expect": "Avatar/name/phone/role + stats", "api": "GET /api/classes, GET /api/students, GET /api/tasks"},
+        {"id": "T-ME-002", "action": "Verify stats: class count, student count, task count", "expect": "Numbers match API data", "frontend": "TeacherProfile: stats"},
+        {"id": "T-ME-003", "action": "Click '退出登录'", "expect": "Clears localStorage, navigates to /login", "frontend": "TeacherProfile: logout"}
+      ]
+    },
+
+    "ADMIN_DASHBOARD": {
+      "description": "管理端 - 数据总览 /admin/dashboard",
+      "role": "admin",
+      "test_cases": [
+        {"id": "A-DSH-001", "action": "Navigate to /admin/dashboard as admin", "expect": "4 KPI cards + bar chart + TOP5 weaknesses", "api": "GET /api/admin/stats, GET /api/knowledge?flat=true"},
+        {"id": "A-DSH-002", "action": "Verify KPI cards show real numbers", "expect": "Student/teacher/task/pending counts match API", "frontend": "Dashboard: KPIs"},
+        {"id": "A-DSH-003", "action": "Verify bar chart renders with ECharts", "expect": "Chart visible with grade×subject data", "frontend": "Dashboard: chart"},
+        {"id": "A-DSH-004", "action": "Verify TOP5 weaknesses list", "expect": "5 items with error rate % and progress bars", "frontend": "Dashboard: weaknesses"},
+        {"id": "A-DSH-005", "action": "Visit as teacher → should be blocked", "expect": "403 or redirect to /teacher/students", "api": "GET /api/admin/stats with teacher token → 403"},
+        {"id": "A-DSH-006", "action": "BottomNav: 5 tabs (总览/组织/任务/诊断/我的)", "expect": "All visible, 总览 active", "frontend": "Dashboard: BottomNav admin"}
+      ]
+    },
+
+    "ADMIN_ORGANIZATION": {
+      "description": "管理端 - 组织管理 /admin/org (4 tabs)",
+      "role": "admin",
+      "test_cases": [
+        {"id": "A-ORG-001", "action": "Navigate to /admin/org → 年级 tab", "expect": "Grade list with edit/delete buttons + add button", "api": "GET /api/classes/grades"},
+        {"id": "A-ORG-002", "action": "Click + 添加年级 → fill form → save", "expect": "New grade appears in list", "api": "POST /api/classes/grades → 200"},
+        {"id": "A-ORG-003", "action": "Click edit on a grade → change name → save", "expect": "Grade name updated in list", "api": "PUT /api/classes/grades/:id → 200"},
+        {"id": "A-ORG-004", "action": "Click delete on a grade with classes", "expect": "409 blocked: 该年级下有X个班级", "api": "DELETE → 409"},
+        {"id": "A-ORG-005", "action": "Switch to 班级 tab", "expect": "Class list with grade filter dropdown", "api": "GET /api/classes"},
+        {"id": "A-ORG-006", "action": "Click + 添加班级 → fill name/grade → save", "expect": "New class in list", "api": "POST /api/classes → 200"},
+        {"id": "A-ORG-007", "action": "Click edit on a class → change name → save", "expect": "Class name updated", "api": "PUT /api/classes/:id → 200"},
+        {"id": "A-ORG-008", "action": "Click delete on a class with students", "expect": "409 blocked: 该班级下有X名学生", "api": "DELETE → 409"},
+        {"id": "A-ORG-009", "action": "Switch to 老师 tab", "expect": "Teacher list with role-colored avatars", "api": "GET /api/users"},
+        {"id": "A-ORG-010", "action": "Click + 添加老师 → fill full form → save", "expect": "New teacher in list", "api": "POST /api/users → 200"},
+        {"id": "A-ORG-011", "action": "Click edit on a teacher → change name/phone → save", "expect": "Teacher updated", "api": "PUT /api/users/:id → 200"},
+        {"id": "A-ORG-012", "action": "Try add teacher with duplicate phone", "expect": "409 手机号已存在", "api": "POST /api/users → 409"},
+        {"id": "A-ORG-013", "action": "Click delete on a teacher with tasks", "expect": "409 blocked", "api": "DELETE → 409"},
+        {"id": "A-ORG-014", "action": "Switch to 学生 tab", "expect": "Student list with grade+class filters", "api": "GET /api/students"},
+        {"id": "A-ORG-015", "action": "Click + 添加学生 → fill name/class/mastery → save", "expect": "New student in list", "api": "POST /api/students → 200"},
+        {"id": "A-ORG-016", "action": "Click edit on a student → change name/mastery/trend/weak → save", "expect": "Student updated", "api": "PUT /api/students/:id → 200"},
+        {"id": "A-ORG-017", "action": "Click delete on a student with diagnoses", "expect": "409 blocked", "api": "DELETE → 409"},
+        {"id": "A-ORG-018", "action": "Filter students by grade → by class", "expect": "List filters correctly", "frontend": "Organization: filters"},
+        {"id": "A-ORG-019", "action": "BottomNav: admin shows 5 tabs", "expect": "总览/组织/任务/诊断/我的", "frontend": "Organization: BottomNav"}
+      ]
+    },
+
+    "ADMIN_TASKS": {
+      "description": "管理端 - 任务管理 /admin/tasks",
+      "role": "admin",
+      "test_cases": [
+        {"id": "A-TSK-001", "action": "Navigate to /admin/tasks", "expect": "All tasks listed with status tags", "api": "GET /api/tasks"},
+        {"id": "A-TSK-002", "action": "Click '详情' on a task", "expect": "Inline detail card expands with full info + status buttons", "frontend": "TaskManage: detail"},
+        {"id": "A-TSK-003", "action": "Click status transition button in detail", "expect": "Task status changes", "api": "POST /api/tasks/:id/status → 200"},
+        {"id": "A-TSK-004", "action": "Click '编辑' on a task", "expect": "CrudModal pre-filled with task data", "frontend": "TaskManage: edit"},
+        {"id": "A-TSK-005", "action": "Click '重跑AI' on ai_processing task", "expect": "AI re-run triggered", "api": "POST /api/tasks/:id/run-ai → 200"},
+        {"id": "A-TSK-006", "action": "Click delete on a draft task", "expect": "Task deleted", "api": "DELETE /api/tasks/:id → 200"},
+        {"id": "A-TSK-007", "action": "Click '查看诊断看板' link in detail", "expect": "Navigate to /admin/diagnosis?task_id=X", "frontend": "TaskManage: diagnosis link"},
+        {"id": "A-TSK-008", "action": "Navigate to /admin/tasks/:id", "expect": "TaskDetail page with status stepper + diagnosis summary", "api": "GET /api/tasks/:id, GET /api/diagnosis?task_id=:id"}
+      ]
+    },
+
+    "ADMIN_DIAGNOSIS": {
+      "description": "管理端 - 诊断看板 /admin/diagnosis (admin/research/super)",
+      "role": "admin",
+      "test_cases": [
+        {"id": "A-DIA-001", "action": "Navigate to /admin/diagnosis", "expect": "Grade + subject dropdowns + heatmap", "api": "GET /api/diagnosis/board"},
+        {"id": "A-DIA-002", "action": "Change grade filter → 五年级", "expect": "Heatmap reloads for selected grade", "frontend": "DiagnosisBoard: filter"},
+        {"id": "A-DIA-003", "action": "Change subject filter → 数学", "expect": "Heatmap reloads for selected subject", "frontend": "DiagnosisBoard: filter"},
+        {"id": "A-DIA-004", "action": "Verify AI suggestion card", "expect": "Purple card with teaching recommendation text", "frontend": "DiagnosisBoard: AI card"},
+        {"id": "A-DIA-005", "action": "Login as research → visit /admin/diagnosis", "expect": "Page loads with research BottomNav", "frontend": "DiagnosisBoard: research nav"}
+      ]
+    },
+
+    "RESEARCH_KNOWLEDGE": {
+      "description": "教研端 - 知识点体系 /admin/knowledge",
+      "role": "research",
+      "test_cases": [
+        {"id": "R-KNW-001", "action": "Navigate to /admin/knowledge as research", "expect": "Tree view with hint card + AI button", "api": "GET /api/knowledge"},
+        {"id": "R-KNW-002", "action": "Click '+ 添加' → fill form → save", "expect": "New node in tree", "api": "POST /api/knowledge → 200"},
+        {"id": "R-KNW-003", "action": "Click edit pencil on a node → change name → save", "expect": "Node name updated", "api": "PUT /api/knowledge/:id → 200"},
+        {"id": "R-KNW-004", "action": "Click delete on a leaf node (no children, no questions)", "expect": "Node deleted, tree refreshes", "api": "DELETE /api/knowledge/:id → 200"},
+        {"id": "R-KNW-005", "action": "Click delete on a node with children", "expect": "Children reparented to parent", "api": "DELETE → 200"},
+        {"id": "R-KNW-006", "action": "Click delete on a node referenced by questions", "expect": "409 blocked: X道题目引用了该知识点", "api": "DELETE → 409"},
+        {"id": "R-KNW-007", "action": "Click 'AI建议' button", "expect": "AI suggestion card with result", "api": "POST /api/ai/suggest"},
+        {"id": "R-KNW-008", "action": "BottomNav: 5 tabs (知识库/题库/AI/诊断/我的)", "expect": "All visible, 知识库 active", "frontend": "KnowledgeTree: BottomNav"}
+      ]
+    },
+
+    "RESEARCH_QBANK": {
+      "description": "教研端 - 题库 /admin/qbank",
+      "role": "research",
+      "test_cases": [
+        {"id": "R-QBK-001", "action": "Navigate to /admin/qbank", "expect": "Service card + filter dropdowns + question list", "api": "GET /api/questions, GET /api/knowledge"},
+        {"id": "R-QBK-002", "action": "Filter by source: 本地题库", "expect": "Only local questions shown", "frontend": "QuestionBank: source filter"},
+        {"id": "R-QBK-003", "action": "Filter by subject: 数学", "expect": "Only math questions shown", "frontend": "QuestionBank: subject filter"},
+        {"id": "R-QBK-004", "action": "Click '+ 添加题目' → fill form → save", "expect": "New question in list", "api": "POST /api/questions → 200"},
+        {"id": "R-QBK-005", "action": "Click '预览' on a question", "expect": "Detail bottom-sheet modal", "frontend": "QuestionBank: preview"},
+        {"id": "R-QBK-006", "action": "Click '编辑标签' → change values → save", "expect": "Question updated", "api": "PUT /api/questions/:id → 200"},
+        {"id": "R-QBK-007", "action": "Click '加入练习篮' on multiple questions", "expect": "Basket counter increments, button shows '已加入'", "frontend": "QuestionBank: basket"},
+        {"id": "R-QBK-008", "action": "Click '清空练习篮'", "expect": "Basket empties, counter reset", "frontend": "QuestionBank: clear basket"},
+        {"id": "R-QBK-009", "action": "Click delete on a question", "expect": "Question removed", "api": "DELETE /api/questions/:id → 200"},
+        {"id": "R-QBK-010", "action": "Click '题源架构' button", "expect": "Navigate to /admin/question-sources", "frontend": "QuestionBank: source nav"}
+      ]
+    },
+
+    "RESEARCH_SOURCES": {
+      "description": "教研端 - 题源架构 /admin/question-sources",
+      "role": "research",
+      "test_cases": [
+        {"id": "R-SRC-001", "action": "Navigate to /admin/question-sources → 总览 tab", "expect": "KPI cards + source composition + call chain", "api": "GET /api/sources/status"},
+        {"id": "R-SRC-002", "action": "Switch to 策略 tab", "expect": "Toggle checkboxes + priority/schedule/minPool selects", "frontend": "QuestionSources: policy tab"},
+        {"id": "R-SRC-003", "action": "Change policy settings → click 保存并立即生效", "expect": "Policy saved, toast confirmation", "api": "PUT /api/sources/policy → 200"},
+        {"id": "R-SRC-004", "action": "Switch to 待处理 tab", "expect": "Pending question queue with accept/ignore", "api": "GET /api/sources/candidates"},
+        {"id": "R-SRC-005", "action": "Click '确认入库' on a candidate", "expect": "Candidate status changes to 已入库", "api": "POST /api/sources/candidates/:id/accept"},
+        {"id": "R-SRC-006", "action": "Click '忽略' on a candidate", "expect": "Candidate status changes to 已忽略", "api": "POST /api/sources/candidates/:id/reject"},
+        {"id": "R-SRC-007", "action": "Switch to 记录 tab", "expect": "Timeline of sync operations", "api": "GET /api/sources/operations"},
+        {"id": "R-SRC-008", "action": "Click '立即同步'", "expect": "Sync triggered, new operation in timeline", "api": "POST /api/sources/sync → 200"}
+      ]
+    },
+
+    "RESEARCH_AI": {
+      "description": "教研端 - AI助手 /admin/ai",
+      "role": "research",
+      "test_cases": [
+        {"id": "R-AI-001", "action": "Navigate to /admin/ai", "expect": "Quick question chips + chat area + input bar", "frontend": "AIAssistant: render"},
+        {"id": "R-AI-002", "action": "Click quick question chip: 分析薄弱点", "expect": "Message sent, AI responds with analysis", "api": "POST /api/ai/suggest"},
+        {"id": "R-AI-003", "action": "Type custom message → click 发送", "expect": "User message + AI response appear", "frontend": "AIAssistant: send"},
+        {"id": "R-AI-004", "action": "Send message while AI is responding", "expect": "Input disabled during loading", "frontend": "AIAssistant: loading state"},
+        {"id": "R-AI-005", "action": "Send empty message", "expect": "Not sent (empty check)", "frontend": "AIAssistant: validation"}
+      ]
+    },
+
+    "SUPER_SYSTEM": {
+      "description": "超管端 - 系统管理 /admin/system (菜单入口)",
+      "role": "super",
+      "test_cases": [
+        {"id": "S-SYS-001", "action": "Navigate to /admin/system", "expect": "5 menu cards with icons: 操作记录/远程协助/AI模型配置/错误日志/权限配置", "frontend": "SystemManage: menu"},
+        {"id": "S-SYS-002", "action": "Click 操作记录", "expect": "Navigate to /admin/audit", "frontend": "SystemManage: nav"},
+        {"id": "S-SYS-003", "action": "Click 远程协助", "expect": "Navigate to /admin/remote", "frontend": "SystemManage: nav"},
+        {"id": "S-SYS-004", "action": "Click AI模型配置", "expect": "Navigate to /admin/ai-settings", "frontend": "SystemManage: nav"},
+        {"id": "S-SYS-005", "action": "Click 错误日志", "expect": "Navigate to /admin/logs", "frontend": "SystemManage: nav"},
+        {"id": "S-SYS-006", "action": "Click 权限配置", "expect": "Navigate to /admin/permissions", "frontend": "SystemManage: nav"},
+        {"id": "S-SYS-007", "action": "Login as admin → visit /admin/system", "expect": "403 or redirect (super only)", "api": "GET /admin/system with admin token → 403"},
+        {"id": "S-SYS-008", "action": "BottomNav: 5 tabs (总览/组织/系统/诊断/我的)", "expect": "Matches Demo spec, NO tasks tab", "frontend": "SystemManage: BottomNav"}
+      ]
+    },
+
+    "SUPER_AUDIT": {
+      "description": "超管端 - 操作记录 /admin/audit",
+      "role": "super",
+      "test_cases": [
+        {"id": "S-AUD-001", "action": "Navigate to /admin/audit", "expect": "Timeline with AI-call tags, pagination", "api": "GET /api/audit"},
+        {"id": "S-AUD-002", "action": "Filter by operator name", "expect": "Filtered results", "frontend": "AuditLog: operator filter"},
+        {"id": "S-AUD-003", "action": "Filter by date range", "expect": "Filtered results", "frontend": "AuditLog: date filter"},
+        {"id": "S-AUD-004", "action": "Filter by action type", "expect": "Filtered results", "frontend": "AuditLog: action filter"},
+        {"id": "S-AUD-005", "action": "Click '加载更多'", "expect": "Next page loads", "frontend": "AuditLog: pagination"},
+        {"id": "S-AUD-006", "action": "Verify '仅超级管理员可见' label", "expect": "Visible on page", "frontend": "AuditLog: label"}
+      ]
+    },
+
+    "SUPER_REMOTE": {
+      "description": "超管端 - 远程协助 /admin/remote",
+      "role": "super",
+      "test_cases": [
+        {"id": "S-REM-001", "action": "Navigate to /admin/remote", "expect": "Teacher dropdown + 6 operation buttons", "api": "GET /api/users"},
+        {"id": "S-REM-002", "action": "Select teacher → click operation button", "expect": "API called, result displayed", "api": "POST /api/admin/remote-help → 200"},
+        {"id": "S-REM-003", "action": "Verify recent assistance history loads", "expect": "History list from API", "api": "GET /api/admin/remote-help/history"}
+      ]
+    },
+
+    "SUPER_AI_SETTINGS": {
+      "description": "超管端 - AI模型配置 /admin/ai-settings",
+      "role": "super",
+      "test_cases": [
+        {"id": "S-AIS-001", "action": "Navigate to /admin/ai-settings", "expect": "6 provider cards with model/AppKey/URL fields", "api": "GET /api/admin/ai-config"},
+        {"id": "S-AIS-002", "action": "Toggle AppKey visibility", "expect": "Text switches between password/text, plain text shown", "frontend": "AISettings: show/hide key"},
+        {"id": "S-AIS-003", "action": "Type AppKey → verify displayed in plain text", "expect": "Key visible in both input and bottom display area", "frontend": "AISettings: plain text"},
+        {"id": "S-AIS-004", "action": "Change active provider radio", "expect": "Only one provider marked active, others inactive", "frontend": "AISettings: radio"},
+        {"id": "S-AIS-005", "action": "Click '保存配置'", "expect": "Config saved, toast + audit log created", "api": "PUT /api/admin/ai-config → 200"},
+        {"id": "S-AIS-006", "action": "Click '重新加载'", "expect": "Configs reloaded from API, local changes discarded", "frontend": "AISettings: reload"},
+        {"id": "S-AIS-007", "action": "Select provider → click '测试连接'", "expect": "Connection test result displayed", "frontend": "AISettings: test"},
+        {"id": "S-AIS-008", "action": "Login as admin → visit /admin/ai-settings", "expect": "403 (super only)", "api": "GET /api/admin/ai-config with admin → 403"}
+      ]
+    },
+
+    "SUPER_LOGS": {
+      "description": "超管端 - 错误日志 /admin/logs",
+      "role": "super",
+      "test_cases": [
+        {"id": "S-LOG-001", "action": "Navigate to /admin/logs", "expect": "4 stat cards + filter bar + log list", "api": "GET /api/logs, GET /api/logs/stats"},
+        {"id": "S-LOG-002", "action": "Filter by repair: 未修复", "expect": "Only repair=False logs shown", "frontend": "LogWeb: repair filter"},
+        {"id": "S-LOG-003", "action": "Filter by source: 前端", "expect": "Only frontend errors shown", "frontend": "LogWeb: source filter"},
+        {"id": "S-LOG-004", "action": "Click '标记修复' on an unrepaired log", "expect": "Log marked as repaired, stats update", "api": "PUT /api/logs/:id/repair → 200"},
+        {"id": "S-LOG-005", "action": "Expand log detail (stack trace / request body)", "expect": "Details visible in expandable section", "frontend": "LogWeb: detail"},
+        {"id": "S-LOG-006", "action": "Pagination: click next/prev", "expect": "Page changes, logs reload", "frontend": "LogWeb: pagination"}
+      ]
+    },
+
+    "SUPER_PERMISSIONS": {
+      "description": "超管端 - 权限配置 /admin/permissions",
+      "role": "super",
+      "test_cases": [
+        {"id": "S-PER-001", "action": "Navigate to /admin/permissions", "expect": "4 role cards with expand/collapse", "frontend": "PermissionConfig: render"},
+        {"id": "S-PER-002", "action": "Expand a role card", "expect": "8 permission groups with toggle switches shown", "frontend": "PermissionConfig: expand"},
+        {"id": "S-PER-003", "action": "Toggle individual permissions", "expect": "Switch changes state", "frontend": "PermissionConfig: toggle"},
+        {"id": "S-PER-004", "action": "Click '全选' for a group", "expect": "All toggles in group turn on", "frontend": "PermissionConfig: select all"},
+        {"id": "S-PER-005", "action": "Click '保存配置'", "expect": "Saved to localStorage, toast confirmation", "frontend": "PermissionConfig: save"},
+        {"id": "S-PER-006", "action": "Reload page → check config restored", "expect": "Permissions restored from localStorage", "frontend": "PermissionConfig: persist"}
+      ]
+    },
+
+    "CROSS_CUTTING": {
+      "description": "跨角色/通用测试",
+      "test_cases": [
+        {"id": "X-RBAC-001", "action": "Teacher tries to access /admin/dashboard", "expect": "Redirect to /teacher/students", "frontend": "router guard"},
+        {"id": "X-RBAC-002", "action": "Teacher tries to access /admin/knowledge", "expect": "Redirect to /teacher/students", "frontend": "router guard"},
+        {"id": "X-RBAC-003", "action": "Admin tries to access /admin/knowledge", "expect": "Redirect to /admin/dashboard", "frontend": "router guard"},
+        {"id": "X-RBAC-004", "action": "Research tries to access /admin/org", "expect": "Redirect to /admin/knowledge", "frontend": "router guard"},
+        {"id": "X-RBAC-005", "action": "Super tries to access /admin/audit", "expect": "Allowed (super only)", "frontend": "router guard"},
+        {"id": "X-RBAC-006", "action": "Admin tries to access /admin/audit", "expect": "Redirect (admin cannot, super only)", "frontend": "router guard"},
+        {"id": "X-NAV-001", "action": "Teacher BottomNav across all teacher pages", "expect": "Always [学生/任务/上传/练习/我的], consistent order", "frontend": "all teacher pages"},
+        {"id": "X-NAV-002", "action": "Admin BottomNav across all admin pages", "expect": "Always [总览/组织/任务/诊断/我的], consistent", "frontend": "all admin pages"},
+        {"id": "X-NAV-003", "action": "Research BottomNav across all research pages", "expect": "Always [知识库/题库/AI/诊断/我的]", "frontend": "all research pages"},
+        {"id": "X-NAV-004", "action": "Super BottomNav across all super pages", "expect": "Always [总览/组织/系统/诊断/我的], NO tasks tab", "frontend": "all super pages"},
+        {"id": "X-409-001", "action": "Delete entity with FK dependencies", "expect": "409 + Chinese message explaining what blocks it", "api": "all DELETE endpoints"},
+        {"id": "X-401-001", "action": "API call with expired/invalid token", "expect": "401, frontend redirects to /login", "frontend": "axios interceptor"},
+        {"id": "X-404-001", "action": "API call for non-existent entity", "expect": "404 with meaningful message", "api": "all GET/:id endpoints"},
+        {"id": "X-LOG-001", "action": "Trigger a 4xx error via API", "expect": "Error appears in /api/logs with repair=False", "api": "POST /api/logs, GET /api/logs?repair=false"},
+        {"id": "X-LOG-002", "action": "Trigger a frontend JS error", "expect": "POST /api/logs called from errorHandler", "frontend": "main.js errorHandler"},
+        {"id": "X-307-001", "action": "GET any list endpoint without trailing slash", "expect": "200 (no 307 redirect)", "api": "all GET list endpoints"}
+      ]
+    }
+  }
+}

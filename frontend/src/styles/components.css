@@ -1,0 +1,408 @@
+/* ========== Cards ========== */
+.card {
+  background: #fff;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 16px;
+  margin-bottom: 12px;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.card-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--gray-900);
+}
+
+/* ========== Buttons ========== */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 20px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 500;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all .2s;
+}
+
+.btn:active { transform: scale(.97); }
+
+.btn-primary {
+  background: var(--primary);
+  color: #fff;
+}
+
+.btn-primary:active { background: var(--primary-dark); }
+
+.btn-outline {
+  background: #fff;
+  color: var(--primary);
+  border-color: var(--primary);
+}
+
+.btn-danger {
+  background: var(--danger);
+  color: #fff;
+}
+
+.btn-danger:active { background: #dc2626; }
+
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+.btn-block {
+  width: 100%;
+}
+
+.btn-ghost {
+  background: none;
+  border: none;
+  color: var(--gray-500);
+  padding: 8px;
+}
+
+/* ========== Tags ========== */
+.tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.6;
+}
+
+.tag-green { background: var(--success-light); color: var(--success); }
+.tag-red { background: var(--danger-light); color: var(--danger); }
+.tag-yellow { background: var(--warning-light); color: var(--warning); }
+.tag-gray { background: var(--gray-100); color: var(--gray-500); }
+.tag-primary { background: var(--primary-light); color: var(--primary); }
+
+/* ========== Badge ========== */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 10px;
+  padding: 0 5px;
+}
+
+/* ========== Inputs ========== */
+.input-group {
+  margin-bottom: 14px;
+}
+
+.input-group label {
+  display: block;
+  font-size: 13px;
+  color: var(--gray-500);
+  margin-bottom: 4px;
+}
+
+.input, .select, .textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  color: var(--gray-900);
+  background: #fff;
+  outline: none;
+  transition: border-color .2s;
+}
+
+.input:focus, .select:focus, .textarea:focus {
+  border-color: var(--primary);
+}
+
+.textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+/* ========== KPI Grid ========== */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+/* ========== Student Card ========== */
+.student-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--gray-100);
+  cursor: pointer;
+  transition: background .2s;
+}
+
+.student-card:hover { background: var(--gray-50); }
+
+.student-card .avatar {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  background: var(--primary-light);
+  color: var(--primary);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; font-weight: 600;
+}
+
+.student-card .info { flex: 1; min-width: 0; }
+
+.student-card .name {
+  font-size: 15px; font-weight: 500; color: var(--gray-900);
+}
+
+.student-card .meta {
+  font-size: 12px; color: var(--gray-400); margin-top: 2px;
+}
+
+/* ========== Split View ========== */
+.split-view {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 48px);
+}
+
+.split-top {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.split-handle {
+  height: 6px;
+  background: var(--gray-200);
+  cursor: row-resize;
+  flex-shrink: 0;
+}
+
+.split-bottom {
+  height: 40%;
+  overflow-y: auto;
+  border-top: 2px solid var(--gray-200);
+}
+
+/* ========== Question Nav ========== */
+.question-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px;
+}
+
+.question-nav-item {
+  width: 32px; height: 32px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  font-size: 12px; font-weight: 500;
+  cursor: pointer;
+  border: 1px solid var(--gray-200);
+  background: #fff;
+  transition: all .2s;
+}
+
+.question-nav-item.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+
+.question-nav-item.confirmed {
+  background: var(--success-light);
+  border-color: var(--success);
+  color: var(--success);
+}
+
+/* ========== Empty State ========== */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--gray-400);
+}
+
+/* ========== Bottom Sheet ========== */
+.bottom-sheet {
+  background: #fff;
+  border-radius: var(--radius) var(--radius) 0 0;
+  width: 100%;
+  max-width: 420px;
+  margin: 0 auto;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.4);
+  z-index: 300;
+  display: flex;
+  align-items: flex-end;
+}
+
+/* ========== Chat ========== */
+.chat-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.chat-msg {
+  max-width: 85%;
+  padding: 10px 14px;
+  border-radius: 16px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.chat-msg.user {
+  align-self: flex-end;
+  background: var(--primary);
+  color: #fff;
+  border-bottom-right-radius: 4px;
+}
+
+.chat-msg.ai {
+  align-self: flex-start;
+  background: var(--gray-100);
+  color: var(--gray-900);
+  border-bottom-left-radius: 4px;
+}
+
+/* ========== Timeline ========== */
+.timeline {
+  position: relative;
+  padding-left: 24px;
+}
+
+.timeline::before {
+  content: '';
+  position: absolute;
+  left: 8px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--gray-200);
+}
+
+.timeline-item {
+  position: relative;
+  padding-bottom: 20px;
+}
+
+.timeline-item::before {
+  content: '';
+  position: absolute;
+  left: -20px;
+  top: 4px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--primary);
+  border: 2px solid #fff;
+  box-shadow: var(--shadow);
+}
+
+.timeline-item:last-child { padding-bottom: 0; }
+
+/* ========== Tree Node ========== */
+.tree-node { user-select: none; }
+
+.tree-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.tree-label:hover { background: var(--gray-100); }
+
+.tree-children { border-left: 1px solid var(--gray-200); margin-left: 14px; }
+
+/* ========== AI Loading ========== */
+.ai-loading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px;
+}
+
+.ai-loading-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--primary);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+.ai-loading-dot:nth-child(2) { animation-delay: .2s; }
+.ai-loading-dot:nth-child(3) { animation-delay: .4s; }
+
+/* ========== Login ========== */
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #EEF2FF 0%, #E0E7FF 100%);
+  padding: 24px;
+}
+
+.login-card {
+  background: #fff;
+  border-radius: var(--radius);
+  padding: 32px 24px;
+  box-shadow: var(--shadow-md);
+  width: 100%;
+  max-width: 360px;
+}
+
+/* ========== Insight Card ========== */
+.insight-card {
+  background: linear-gradient(135deg, var(--primary-light), #fff);
+  border: 1px solid rgba(79,70,229,.15);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 12px;
+}
+
+/* ========== Animations ========== */
+.fade-in {
+  animation: fadeIn .4s ease;
+}
+
+.pulse {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+/* ========== Scrollbar ========== */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-thumb { background: var(--gray-300); border-radius: 4px; }
