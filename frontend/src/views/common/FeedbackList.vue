@@ -1,6 +1,6 @@
 <template>
   <div class="page feedback-list-page">
-    <PageHeader title="修改意见和BUG提交" />
+    <PageHeader title="修改意见和BUG提交" showBack />
 
     <!-- filter bar -->
     <div class="filter-bar">
@@ -48,21 +48,74 @@
     <CrudModal v-if="deleteTarget" title="确认删除" @close="deleteTarget = null" @save="doDelete">
       <p>确定要删除「{{ deleteTarget.title }}」吗？此操作不可恢复。</p>
     </CrudModal>
+
+    <BottomNav :items="navItems" active="" @nav="onNav" />
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { feedbackAPI } from '@/api/feedback'
 import PageHeader from '@/components/PageHeader.vue'
+import BottomNav from '@/components/BottomNav.vue'
 import LoadSpinner from '@/components/LoadSpinner.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import CrudModal from '@/components/CrudModal.vue'
+import { icons } from '@/utils/icons'
 
 const router = useRouter()
 const auth = useAuthStore()
+
+const navItems = computed(() => {
+  const role = auth.user?.role
+  if (role === 'teacher') return [
+    { key: 'students', label: '学生', icon: icons.students },
+    { key: 'tasks', label: '任务', icon: icons.tasks },
+    { key: 'upload', label: '上传', icon: icons.upload },
+    { key: 'exercise', label: '练习', icon: icons.exercise },
+    { key: 'me', label: '我的', icon: icons.home },
+  ]
+  if (role === 'research') return [
+    { key: 'knowledge', label: '知识库', icon: icons.knowledge },
+    { key: 'qbank', label: '题库', icon: icons.qbank },
+    { key: 'ai', label: 'AI', icon: icons.ai },
+    { key: 'diagnosis', label: '诊断', icon: icons.diagnosis },
+    { key: 'me', label: '我的', icon: icons.home },
+  ]
+  // admin / super
+  return [
+    { key: 'dashboard', label: '总览', icon: icons.dashboard },
+    { key: 'org', label: '组织', icon: icons.org },
+    { key: 'tasks', label: '任务', icon: icons.tasks },
+    { key: 'diagnosis', label: '诊断', icon: icons.diagnosis },
+    { key: 'me', label: '我的', icon: icons.home },
+  ]
+})
+
+function onNav(key) {
+  const role = auth.user?.role
+  if (role === 'teacher') {
+    if (key === 'students') router.push('/teacher/students')
+    else if (key === 'tasks') router.push('/teacher/tasks')
+    else if (key === 'upload') router.push('/teacher/upload')
+    else if (key === 'exercise') router.push('/teacher/exercise')
+    else if (key === 'me') router.push('/teacher/me')
+  } else if (role === 'research') {
+    if (key === 'knowledge') router.push('/admin/knowledge')
+    else if (key === 'qbank') router.push('/admin/qbank')
+    else if (key === 'ai') router.push('/admin/ai')
+    else if (key === 'diagnosis') router.push('/admin/diagnosis')
+    else if (key === 'me') router.push('/admin/me')
+  } else {
+    if (key === 'dashboard') router.push('/admin/dashboard')
+    else if (key === 'org') router.push('/admin/org')
+    else if (key === 'tasks') router.push('/admin/tasks')
+    else if (key === 'diagnosis') router.push('/admin/diagnosis')
+    else if (key === 'me') router.push('/admin/me')
+  }
+}
 
 const items = ref([])
 const total = ref(0)
