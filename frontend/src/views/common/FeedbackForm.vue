@@ -206,7 +206,7 @@ async function doSubmit() {
     } else {
       await feedbackAPI.create(payload)
     }
-    router.push('/feedback')
+    router.replace('/feedback')
   } catch (e) {
     const msg = e?.response?.data?.detail || '提交失败'
     alert(msg)
@@ -215,12 +215,12 @@ async function doSubmit() {
 }
 
 async function doAccept() {
-  try { await feedbackAPI.accept(feedbackId.value); router.push('/feedback') }
+  try { await feedbackAPI.accept(feedbackId.value); router.replace('/feedback') }
   catch { alert('受理失败') }
 }
 
 async function doComplete() {
-  try { await feedbackAPI.complete(feedbackId.value); router.push('/feedback') }
+  try { await feedbackAPI.complete(feedbackId.value); router.replace('/feedback') }
   catch { alert('操作失败') }
 }
 
