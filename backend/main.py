@@ -179,6 +179,12 @@ try:
 except ImportError:
     pass
 
+try:
+    from api.feedback import router as feedback_router
+    app.include_router(feedback_router, prefix="/api/feedback", tags=["意见反馈"])
+except ImportError:
+    pass
+
 
 # ---------------------------------------------------------------------------
 # Error logging middleware — captures all unhandled exceptions

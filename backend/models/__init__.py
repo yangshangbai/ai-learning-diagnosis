@@ -15,6 +15,7 @@ from models.audit import AuditLog
 
 from models.ai_config import AIConfig
 from models.error_log import ErrorLog
+from models.feedback import Feedback
 
 __all__ = [
     "Base",
@@ -35,4 +36,5 @@ __all__ = [
     "AuditLog",
     "AIConfig",
     "ErrorLog",
+    "Feedback",
 ]

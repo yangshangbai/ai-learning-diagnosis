@@ -54,6 +54,8 @@ const roleText = computed(() => roleLabel(role.value))
 
 const quickLinks = computed(() => {
   const links = []
+  // 意见反馈 — 所有角色可见
+  links.push({ path: '/feedback', label: '修改意见和BUG提交', icon: '💬' })
   if (['admin', 'super'].includes(role.value)) {
     links.push({ path: '/admin/dashboard', label: '数据总览', icon: icons.dashboard })
     links.push({ path: '/admin/org', label: '组织管理', icon: icons.org })

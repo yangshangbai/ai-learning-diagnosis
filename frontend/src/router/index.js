@@ -29,6 +29,11 @@ const routes = [
   { path: '/admin/logs', name: 'AdminLogs', component: () => import('@/views/admin/LogWeb.vue'), meta: { role: 'super' } },
   { path: '/admin/tasks/:id', name: 'AdminTaskDetail', component: () => import('@/views/admin/TaskDetail.vue'), meta: { role: ['admin', 'super', 'research'] } },
   { path: '/admin/me', name: 'AdminMe', component: () => import('@/views/admin/AdminProfile.vue'), meta: { role: ['admin', 'research', 'super'] } },
+  // Feedback routes (all authenticated users)
+  { path: '/feedback', name: 'FeedbackList', component: () => import('@/views/common/FeedbackList.vue') },
+  { path: '/feedback/create', name: 'FeedbackCreate', component: () => import('@/views/common/FeedbackForm.vue') },
+  { path: '/feedback/:id', name: 'FeedbackView', component: () => import('@/views/common/FeedbackForm.vue') },
+  { path: '/feedback/:id/edit', name: 'FeedbackEdit', component: () => import('@/views/common/FeedbackForm.vue') },
   // Redirects
   { path: '/teacher/home', redirect: '/teacher/students' },
   { path: '/admin/question-bank', redirect: '/admin/qbank' },

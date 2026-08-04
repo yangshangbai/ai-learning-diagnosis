@@ -27,6 +27,13 @@
         <div style="font-size:14px;padding:6px 0">&#x1F4DD; 任务总数：{{ tasksCount }}个</div>
       </div>
 
+      <!-- 意见反馈 -->
+      <div class="card" style="margin-top:12px;cursor:pointer" @click="$router.push('/feedback')">
+        <div style="font-size:14px;padding:8px 0;display:flex;align-items:center;gap:8px">
+          <span>💬</span><span style="flex:1">修改意见和BUG提交</span><span style="color:var(--gray-300)">→</span>
+        </div>
+      </div>
+
       <!-- Logout Button -->
       <button class="btn btn-danger btn-block" style="height:48px;font-size:16px;margin-top:12px" @click="handleLogout">&#x1F6AA; 退出登录</button>
     </div>
