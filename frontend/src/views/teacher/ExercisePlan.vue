@@ -383,8 +383,8 @@ async function saveEdit() {
   const p = editModalData.value
   const payload = {
     student_id: editForm.value.studentId,
-    kp: editForm.value.kp,
-    count: editForm.value.count,
+    target_kp: editForm.value.kp,
+    question_count: editForm.value.count,
     difficulty: editForm.value.difficulty,
     frequency: editForm.value.freq,
     effect: editForm.value.effect,
@@ -450,8 +450,8 @@ async function genPlan() {
 
   const today = new Date().toLocaleDateString('zh', { month: 'short', day: 'numeric' })
   const basePayload = {
-    kp: plan.value.kp,
-    count: plan.value.count,
+    target_kp: plan.value.kp,
+    question_count: plan.value.count,
     difficulty: plan.value.difficulty,
     frequency: plan.value.freq,
   }

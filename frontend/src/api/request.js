@@ -26,11 +26,16 @@ request.interceptors.response.use((response) => {
   const errUrl = error.config?.url || ''
   if (errUrl !== reportUrl && errUrl !== '/logs' && errUrl !== '/api/logs') {
     try {
+      // Properly serialize error detail (handle Pydantic validation arrays)
+      let errMsg = msg
+      if (typeof errMsg === 'object') {
+        try { errMsg = JSON.stringify(errMsg).slice(0, 1000) } catch {}
+      }
       const payload = {
         endpoint: errUrl,
         method: (error.config?.method || 'GET').toUpperCase(),
         error_type: error.response?.status ? 'HTTP ' + error.response.status : String(error.code || 'NetworkError').substring(0, 100),
-        error_message: String(msg).substring(0, 1000),
+        error_message: String(errMsg).substring(0, 1000),
         status_code: error.response?.status || 0,
         stack_trace: (error.stack || '').slice(0, 500),
         request_body: '',
