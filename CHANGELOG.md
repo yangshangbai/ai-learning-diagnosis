@@ -1,6 +1,25 @@
-# 修改清单 — AI学习诊断系统
+# 修改清单 — 教研管理平台(AI学习诊断系统)
 
-> 版本: v1.1.0 | 日期: 2026-07-22 | 会话ID: sess_8592fa6d
+> 版本: v2.0.0 | 日期: 2026-08-29
+
+---
+
+## v2.0.0 — Workbuddy 重设计版基线 (2026-08-29)
+
+- **架构重设计**: 后端从旧 `backend/api/` 扁平结构迁移到 `backend/app/{core,models,routers,schemas}` 分层;18 个 router / 95 个端点,统一挂 `/api/v1/*`
+- **新功能域**: 考试任务六态状态机+答题卡渲染打印(四角定位+二维码)+AI识别(GLM-4V);题库 docx/OCR/智能三路导入;AI 选题四步流水线对接教研云(:8787 代理);试卷/答题卡 Word 模板引擎;三级实时看板(任务/班级/学生)
+- **权限重设计**: 角色收敛为 admin/teacher,11 模块×4 动作勾选式 RBAC,教师数据域按 teacher_classes 隔离
+- **教研云对接**: `jiaoyanyun/` 三件套(Chrome CDP 看护/同步爬虫/查询代理)
+- **运维**: system_logs 错误闭环 + auto_repair cron 自动修复/自动提交;生产 PostgreSQL 16
+- **工程**: 本地全量重建(自云端拉取 1830 文件逐字节校验),v2.0.0 基线提交 `ff622a7` 推送 GitHub
+- **文档**: 新增 `docs/reverse/` 逆源文档六件套(设计思路/功能需求/业务流程BL/接口规范/数据模型/技术债16项);AGENTS.md 重写为 v2
+- **已知债务**: 16 项见 `docs/reverse/current/06-技术债与风险.md`(含: AI 评分为满分桩、requirements 缺 python-docx/qrcode、旧 Vue SPA 未退役、密码无盐 sha256)
+
+---
+
+## v1.1.0 — 历史版本 (2026-07-22)
+
+> 版本: v1.1.0 | 会话ID: sess_8592fa6d
 
 ---
 
