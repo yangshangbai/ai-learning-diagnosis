@@ -19,6 +19,7 @@
 权限：教师仅可访问自己创建的任务；管理员全量。
 """
 import datetime
+import html
 import re
 from typing import Optional, List
 
@@ -100,7 +101,15 @@ _TF_MAP = {
 
 
 def _normalize_answer(value) -> str:
-    return re.sub(r"\s+", "", str(value or "")).upper()
+    """判分归一化：剥离HTML标签+还原实体（导入题标准答案常为 <p>..</p> 富文本，可双重转义）+去空白+大写。"""
+    s = str(value or "")
+    for _ in range(3):
+        prev = s
+        s = re.sub(r"<[^>]+>", "", s)
+        s = html.unescape(s)
+        if s == prev:
+            break
+    return re.sub(r"\s+", "", s).upper()
 
 
 def _grade_objective(ques_type: Optional[str], student_answer: str, answer_key) -> Optional[bool]:
