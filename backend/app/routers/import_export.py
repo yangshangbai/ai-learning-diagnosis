@@ -23,6 +23,7 @@ import zipfile
 from fastapi import APIRouter, Depends, UploadFile, File, Body, Form
 from fastapi.responses import Response, JSONResponse
 
+from ..core.config import settings
 from ..core.errors import ValidationError
 from ..core.logging import logger
 from ..core.security import Principal, require_auth, require_permission
@@ -463,7 +464,10 @@ async def import_ocr(
     if not data:
         return JSONResponse({"code": 400, "message": "上传文件为空", "data": None}, 400)
     if not (api_key or "").strip():
-        raise ValidationError("未配置 AI 模型 API Key（系统设置→AI模型配置）")
+        if (provider or "").lower() == "zhipu" and settings.ai_zhipu_api_key:
+            api_key = settings.ai_zhipu_api_key   # 服务端统一密钥回退
+        else:
+            raise ValidationError("未配置视觉模型 API Key（系统设置→AI模型配置，或服务端 AI_ZHIPU_API_KEY）")
 
     url = (base_url or "").strip() or _VISION_PROVIDERS.get((provider or "").lower())
     if not url:
@@ -1040,7 +1044,10 @@ async def import_smart(
     # ---------- OCR 类（pdf / png / jpg） ----------
     if fmt in ("pdf", "png", "jpg"):
         if not (api_key or "").strip():
-            raise ValidationError("图片/PDF 识别需要先配置视觉模型 API Key（系统设置→AI模型配置）")
+            if (provider or "").lower() == "zhipu" and settings.ai_zhipu_api_key:
+                api_key = settings.ai_zhipu_api_key   # 服务端统一密钥回退
+            else:
+                raise ValidationError("图片/PDF 识别需要先配置视觉模型 API Key（系统设置→AI模型配置，或服务端 AI_ZHIPU_API_KEY）")
         url = (base_url or "").strip() or _VISION_PROVIDERS.get((provider or "").lower())
         if not url:
             raise ValidationError("不支持的视觉模型 provider：%s（可传 base_url 覆盖）" % provider)

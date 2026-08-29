@@ -2097,7 +2097,7 @@ async function aiSelectSubmit() {
   };
   if (!Object.values(typeConfig).some(v => v > 0)) { showToast('请至少设置一种题型的题量', 'error'); return; }
   const cfg = _loadReasonModelConfig() || {};
-  if (!cfg.apiKey) { showToast('未配置推理模型 API Key，请到「系统设置→AI模型配置」填写', 'error'); return; }
+  // Key 留空时服务端 AI_ZHIPU_API_KEY 兜底，不再前端强校验
   const resultEl = document.getElementById('aisResult');
   const btn = document.getElementById('aisSubmitBtn');
   if (btn) { btn.disabled = true; btn.textContent = '🤖 AI 选题中…'; }
@@ -2255,7 +2255,7 @@ async function aiCreatePaperSubmit() {
   };
   if (!Object.values(typeConfig).some(v => v > 0)) { showToast('请至少设置一种题型的题量', 'error'); return; }
   const cfg = _loadReasonModelConfig() || {};
-  if (!cfg.apiKey) { showToast('未配置推理模型 API Key，请到「系统设置→AI模型配置」填写', 'error'); return; }
+  // Key 留空时服务端 AI_ZHIPU_API_KEY 兜底，不再前端强校验
   const resultEl = document.getElementById('aipResult');
   const btn = document.getElementById('aipSubmitBtn');
   if (btn) { btn.disabled = true; btn.textContent = '🤖 AI 生成中…'; }
@@ -7305,16 +7305,16 @@ function _saveAiModelConfig(cfg) {
 }
 
 function renderAiModelConfig() {
-  // 首次访问：视觉模型默认智谱 GLM-4V + 预填 API Key
+  // 首次访问：视觉模型默认智谱 GLM-4V；Key 留空走服务端 AI_ZHIPU_API_KEY（密钥不落浏览器）
   let cfg = _loadAiModelConfig();
   if (!cfg) {
-    cfg = { provider:'zhipu', modelType:'glm-4v', apiKey:'10822a2f88a04424b33fc72d242ac154.dUYAlJQ8GgVn9N19', enabled:true, isDefault:true, savedAt:new Date().toLocaleString('zh-CN') };
+    cfg = { provider:'zhipu', modelType:'glm-4v', apiKey:'', enabled:true, isDefault:true, savedAt:new Date().toLocaleString('zh-CN') };
     _saveAiModelConfig(cfg);
   }
-  // 推理模型默认 DeepSeek V4 Flash + 预填 API Key
+  // 推理模型默认智谱 GLM-4-Flash；Key 留空走服务端 AI_ZHIPU_API_KEY
   let rcfg = _loadReasonModelConfig();
   if (!rcfg) {
-    rcfg = { provider:'deepseek', modelType:'deepseek-chat', apiKey:'sk-ddb80370fc1d44008d3bc934031c9fb9', enabled:true, isDefault:true, savedAt:new Date().toLocaleString('zh-CN') };
+    rcfg = { provider:'zhipu', modelType:'glm-4-flash', apiKey:'', enabled:true, isDefault:true, savedAt:new Date().toLocaleString('zh-CN') };
     _saveReasonModelConfig(rcfg);
   }
   const presets = AI_MODEL_PRESETS;
@@ -7341,8 +7341,8 @@ function renderAiModelConfig() {
           ${(presets.find(p => p.provider===cfg.provider) || presets[0]).models.map(m => `<option value="${m}" ${cfg.modelType===m?'selected':''}>${m}</option>`).join('')}
         </select>
       </div></div>
-      <div class="form-row"><label>API Key（明文保存/显示）</label><div class="form-input">
-        <input type="text" id="aiModelApiKey" class="form-input" value="${cfg.apiKey || ''}" placeholder="填写模型 API Key" autocomplete="off">
+      <div class="form-row"><label>API Key（留空则用服务端配置）</label><div class="form-input">
+        <input type="text" id="aiModelApiKey" class="form-input" value="${cfg.apiKey || ''}" placeholder="留空 = 使用服务端配置的密钥" autocomplete="off">
       </div></div>
       <div style="display:flex;gap:12px;margin-top:12px;">
         <button class="btn btn-primary" onclick="saveAiModelConfig()">💾 保存</button>
@@ -7367,8 +7367,8 @@ function renderAiModelConfig() {
           ${rpreset.models.map(m => `<option value="${m}" ${rcfg.modelType===m?'selected':''}>${m}</option>`).join('')}
         </select>
       </div></div>
-      <div class="form-row"><label>API Key（明文保存/显示）</label><div class="form-input">
-        <input type="text" id="aiReasonApiKey" class="form-input" value="${rcfg.apiKey || ''}" placeholder="填写模型 API Key" autocomplete="off">
+      <div class="form-row"><label>API Key（留空则用服务端配置）</label><div class="form-input">
+        <input type="text" id="aiReasonApiKey" class="form-input" value="${rcfg.apiKey || ''}" placeholder="留空 = 使用服务端配置的密钥" autocomplete="off">
       </div></div>
       <div style="display:flex;gap:12px;margin-top:12px;">
         <button class="btn btn-primary" onclick="saveReasonModelConfig()">💾 保存</button>
@@ -7401,7 +7401,7 @@ function saveAiModelConfig() {
   const provider = (document.getElementById('aiModelProvider') || {}).value || 'zhipu';
   const modelType = (document.getElementById('aiModelType') || {}).value;
   const apiKey = (document.getElementById('aiModelApiKey') || {}).value || '';
-  if (!apiKey.trim()) { showToast('请填写视觉模型 API Key', 'error'); return; }
+  // Key 可留空：服务端 AI_ZHIPU_API_KEY 兜底，避免凭证经浏览器传输
   const cfg = { provider, modelType, apiKey: apiKey.trim(), enabled: true, isDefault: true, savedAt: new Date().toLocaleString('zh-CN') };
   _saveAiModelConfig(cfg);
   const status = document.getElementById('aiModelStatus');
@@ -7410,10 +7410,10 @@ function saveAiModelConfig() {
 }
 
 function saveReasonModelConfig() {
-  const provider = (document.getElementById('aiReasonProvider') || {}).value || 'deepseek';
+  const provider = (document.getElementById('aiReasonProvider') || {}).value || 'zhipu';
   const modelType = (document.getElementById('aiReasonModelType') || {}).value;
   const apiKey = (document.getElementById('aiReasonApiKey') || {}).value || '';
-  if (!apiKey.trim()) { showToast('请填写推理模型 API Key', 'error'); return; }
+  // Key 可留空：服务端 AI_ZHIPU_API_KEY 兜底，避免凭证经浏览器传输
   const cfg = { provider, modelType, apiKey: apiKey.trim(), enabled: true, isDefault: true, savedAt: new Date().toLocaleString('zh-CN') };
   _saveReasonModelConfig(cfg);
   const status = document.getElementById('aiReasonStatus');

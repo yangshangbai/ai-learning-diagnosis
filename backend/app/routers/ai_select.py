@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from .. import models
 from ..core.db import SessionLocal
+from ..core.config import settings
 from ..core.errors import NotFoundError, ValidationError
 from ..core.logging import logger
 from ..core.security import Principal, require_auth, require_permission
@@ -388,8 +389,14 @@ def _ai_pick(body: SelectQuestionsBody, candidates: List[dict]) -> List[str]:
 # ---------------- 端点 ----------------
 @router.post("/select-questions")
 def select_questions(body: SelectQuestionsBody, principal: Principal = Depends(require_permission("ai_select", "add")), db: Session = Depends(get_db)):
+    if not body.api_key and not settings.ai_zhipu_api_key:
+        raise ValidationError("未配置 AI 模型 API Key（系统设置→AI模型配置，或服务端 AI_ZHIPU_API_KEY）")
     if not body.api_key:
-        raise ValidationError("未配置 AI 模型 API Key（系统设置→AI模型配置）")
+        # 服务端统一密钥：推理模型切换为智谱文本模型（服务端仅托管智谱 Key）
+        body.provider = "zhipu"
+        if "deepseek" in (body.model or "") or not (body.model or ""):
+            body.model = "glm-4-flash"
+        body.api_key = settings.ai_zhipu_api_key
     if not body.type_config:
         raise ValidationError("请设置各题型题量")
 
