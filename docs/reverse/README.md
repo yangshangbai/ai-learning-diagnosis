@@ -17,7 +17,8 @@
 
 ## 快速事实卡
 
-- **生产真身前端**: `frontend/demo/index.html`(原生 JS 单文件 SPA,33 路由) —— `frontend/src/` Vue SPA 是旧架构遗留,**未接入新后端**
+- **生产真身前端**: `frontend/demo/index.html`(原生 JS 单文件 SPA,33 路由;与 WD 源头根 `demo/` 逐字节一致)
+- **frontend/src 两套版本**: WD 源头=全新 TypeScript 管理端 `training-admin-frontend`(对接新后端,**未部署**);服务器=旧 JS 版(v1 遗留)→ 部署漂移,见技术债 #1/#17
 - **后端**: FastAPI,入口 `backend/app/main.py`,所有业务路由挂 `/api/v1/*`(95 端点)
 - **数据库**: 生产 PostgreSQL 16(`backend/.env`),开发 SQLite(`backend/app/core/config.py:17-59`)
 - **角色**: 仅 `admin` / `teacher` 两种(旧四角色模型已废弃)
