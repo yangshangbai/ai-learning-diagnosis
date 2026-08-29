@@ -27,10 +27,10 @@ tar czf - --exclude='__pycache__' --exclude='*.pyc' --exclude='venv' \
     "cd $REMOTE_DIR && tar xzf - --overwrite 2>/dev/null || tar xzf -"
 echo -e "${GREEN}  ✓ 同步完成${NC}"
 
-# 2. Pip install
+# 2. Pip install（venv 内 pip 脚本 shebang 指向历史路径已失效，改用 venv python -m pip）
 echo -e "${YELLOW}[2/3] 更新Python依赖...${NC}"
 ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$SSH_USER@$SSH_HOST" \
-    "/opt/ai-learning/backend/venv/bin/pip install -q -r /opt/ai-learning/backend/requirements.txt && echo '  ✓ 依赖OK'"
+    "/opt/ai-learning/backend/venv/bin/python3 -m pip install -q -r /opt/ai-learning/backend/requirements.txt && echo '  ✓ 依赖OK'"
 
 # 3. Graceful restart
 echo -e "${YELLOW}[3/3] 重载Gunicorn...${NC}"
