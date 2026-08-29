@@ -18,10 +18,20 @@ class ExamTaskCreate(BaseModel):
         return v.strip()
 
 
+_EXAM_TASK_STATUS = {"draft", "pending", "in_exam", "scoring", "completed", "voided"}
+
+
 class ExamTaskUpdate(BaseModel):
     name: Optional[str] = None
     category_id: Optional[int] = None
     status: Optional[str] = None
+
+    @field_validator("status")
+    @classmethod
+    def _status_enum(cls, v):
+        if v is not None and v not in _EXAM_TASK_STATUS:
+            raise ValueError(f"status 必须是 {sorted(_EXAM_TASK_STATUS)} 之一")
+        return v
 
 
 class ExamTaskOut(BaseModel):
@@ -62,11 +72,17 @@ class TaskAssignmentOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class RecognizedAnswerIn(BaseModel):
+    question_number: int
+    answer: str = ""
+
+
 class AnswerSheetCreate(BaseModel):
     student_id: int
     image_urls: List[str] = []
     upload_type: Optional[str] = "file"  # camera / file
     upload_device: Optional[str] = "pc"  # mobile / pc
+    answers: Optional[List[RecognizedAnswerIn]] = None  # 识别结果（题号→答案），随上传入库并由服务端判分
 
 
 class AnswerSheetOut(BaseModel):

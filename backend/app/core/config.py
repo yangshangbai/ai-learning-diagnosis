@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     # 系统日志上报限流（每分钟每 IP），由网关/中间件落实，这里仅声明阈值
     log_report_limit_per_min: int = 120
 
+    # AI 视觉识别服务端密钥（可选）：配置后前端无需再传 api_key，避免凭证经浏览器传输
+    ai_zhipu_api_key: str = ""
+
     @property
     def is_prod(self) -> bool:
         return self.app_env == "prod"

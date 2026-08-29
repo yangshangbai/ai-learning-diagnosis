@@ -19,6 +19,7 @@
 权限：教师仅可访问自己创建的任务；管理员全量。
 """
 import datetime
+import re
 from typing import Optional, List
 
 from fastapi import APIRouter, Depends, Query
@@ -84,6 +85,104 @@ def _assign(db: Session, task_id: int, student_ids: List[int]):
             )
         )
     db.commit()
+
+
+def _ensure_task_owner(db: Session, task: models.ExamTask, principal: Principal) -> None:
+    """水平越权防护：教师仅可操作自己创建的任务（管理员全量）。"""
+    if principal.role == "teacher" and principal.teacher_id != task.creator_id:
+        raise ForbiddenError("仅可操作自己创建的任务")
+
+
+_TF_MAP = {
+    "√": "T", "对": "T", "正确": "T", "T": "T", "Y": "T", "YES": "T",
+    "×": "F", "错": "F", "错误": "F", "F": "F", "N": "F", "NO": "F",
+}
+
+
+def _normalize_answer(value) -> str:
+    return re.sub(r"\s+", "", str(value or "")).upper()
+
+
+def _grade_objective(ques_type: Optional[str], student_answer: str, answer_key) -> Optional[bool]:
+    """客观题确定性判分：与标准答案归一化比对。
+
+    返回 True/False；主观题(essay)返回 None，交给教师评分。
+    标准答案支持多可接受值（| 或 ｜ 或 「或」 分隔）。
+    """
+    qtype = ques_type or "essay"
+    if qtype == "essay":
+        return None
+    sa = _normalize_answer(student_answer)
+    keys = [
+        _normalize_answer(k)
+        for k in re.split(r"[|｜]|或", str(answer_key or ""))
+        if str(answer_key or "").strip()
+    ]
+    if qtype == "multi_choice":
+        sa = "".join(sorted(sa))
+        keys = ["".join(sorted(k)) for k in keys]
+    if qtype == "true_false":
+        sa = _TF_MAP.get(sa, sa)
+        keys = [_TF_MAP.get(k, k) for k in keys]
+    return bool(sa) and sa in keys
+
+
+def _persist_recognized_answers(db: Session, sheet: models.AnswerSheet, answers) -> bool:
+    """识别答案随上传入库，并对客观题做服务端确定性判分（识别↔评分在此接通）。
+
+    主观题(essay)不自动判分，留待教师。返回是否存在未判分题目。
+    """
+    task = db.query(models.ExamTask).filter(models.ExamTask.id == sheet.task_id).first()
+    pqs = (
+        db.query(models.PaperQuestion)
+        .filter(models.PaperQuestion.paper_id == task.paper_id)
+        .order_by(models.PaperQuestion.sort_order)
+        .all()
+    )
+    amap = {a.question_number: str(a.answer or "") for a in answers if getattr(a, "question_number", None)}
+    has_ungraded = False
+    for pq in pqs:
+        q = (
+            db.query(models.Question).filter(models.Question.id == pq.question_id).first()
+            if pq.question_id
+            else None
+        )
+        qtype = q.ques_type if q else "essay"
+        ans = amap.get(pq.sort_order, "")
+        correct = pq.answer_key if pq.answer_key is not None else (q.answer if q else None)
+        max_score = pq.score or 0
+        ok = _grade_objective(qtype, ans, correct)
+        if ok is None:
+            has_ungraded = True
+            ai_score = final = conf = None
+            expl = "主观题，待教师评分"
+        else:
+            ai_score = float(max_score) if ok else 0.0
+            final = ai_score
+            conf = 1.0
+            expl = "客观题自动判分（与标准答案归一化比对）"
+            if qtype == "fill_blank" and not ok:
+                expl += "；未命中任何可接受答案，建议人工复核"
+        db.add(
+            models.QuestionScore(
+                answer_sheet_id=sheet.id,
+                task_id=sheet.task_id,
+                student_id=sheet.student_id,
+                paper_question_id=pq.id,
+                question_number=pq.sort_order,
+                student_answer=ans,
+                correct_answer=correct,
+                ai_score=ai_score,
+                ai_max_score=max_score,
+                ai_confidence=conf,
+                ai_explanation=expl,
+                ai_raw_output={"grader": "server-objective-v1"},
+                final_score=final,
+                score_status="ai_scored",
+            )
+        )
+    db.commit()
+    return has_ungraded
 
 
 def _to_task_out(db: Session, t: models.ExamTask) -> ExamTaskOut:
@@ -249,13 +348,20 @@ def list_assignments(task_id: int, principal: Principal = Depends(require_auth),
 
 
 @router.post("/{task_id}/answer-sheets", response_model=AnswerSheetOut, status_code=201)
-def upload_answer_sheet(task_id: int, body: AnswerSheetCreate, _: Principal = Depends(require_permission("exam", "edit")), db: Session = Depends(get_db)):
+def upload_answer_sheet(task_id: int, body: AnswerSheetCreate, principal: Principal = Depends(require_permission("exam", "edit")), db: Session = Depends(get_db)):
     t = db.query(models.ExamTask).filter(models.ExamTask.id == task_id).first()
     if not t:
         raise NotFoundError("考试任务", task_id)
+    _ensure_task_owner(db, t, principal)
     stu = db.query(models.Student).filter(models.Student.id == body.student_id).first()
     if not stu:
         raise NotFoundError("学生", body.student_id)
+    # 重复上传防护：同一学生同任务的旧有效卡置为 superseded，列表与统计只认 active
+    db.query(models.AnswerSheet).filter(
+        models.AnswerSheet.task_id == task_id,
+        models.AnswerSheet.student_id == body.student_id,
+        models.AnswerSheet.record_status == "active",
+    ).update({"record_status": "superseded"}, synchronize_session=False)
     sheet = models.AnswerSheet(
         task_id=task_id,
         student_id=body.student_id,
@@ -267,6 +373,11 @@ def upload_answer_sheet(task_id: int, body: AnswerSheetCreate, _: Principal = De
     db.add(sheet)
     db.commit()
     db.refresh(sheet)
+    # 识别答案随上传入库 + 客观题服务端判分（不再依赖前端内存数据）
+    has_ungraded = _persist_recognized_answers(db, sheet, body.answers or [])
+    sheet.ai_status = "processing" if has_ungraded else "completed"
+    sheet.ai_started_at = sheet.ai_started_at or datetime.datetime.now(datetime.timezone.utc)
+    sheet.ai_completed_at = datetime.datetime.now(datetime.timezone.utc)
     # 更新分配状态
     assign = (
         db.query(models.TaskAssignment)
@@ -275,7 +386,10 @@ def upload_answer_sheet(task_id: int, body: AnswerSheetCreate, _: Principal = De
     )
     if assign:
         assign.status = "uploaded"
-        db.commit()
+    # 任务状态推进：草稿/待考 → 考试回收中
+    if t.status in ("draft", "pending"):
+        t.status = "in_exam"
+    db.commit()
     logger.info("answer_sheet_uploaded", extra={"id": sheet.id, "task": task_id})
     return AnswerSheetOut.model_validate(sheet)
 
@@ -305,68 +419,96 @@ def list_answer_sheets(task_id: int, principal: Principal = Depends(require_auth
         raise NotFoundError("考试任务", task_id)
     if principal.role == "teacher" and principal.teacher_id != t.creator_id:
         raise ForbiddenError("无权访问")
-    rows = db.query(models.AnswerSheet).filter(models.AnswerSheet.task_id == task_id).all()
+    rows = (
+        db.query(models.AnswerSheet)
+        .filter(models.AnswerSheet.task_id == task_id, models.AnswerSheet.record_status == "active")
+        .all()
+    )
     return [_sheet_out(db, r) for r in rows]
 
 
 @router.post("/answer-sheets/{sheet_id}/score")
-def score_answer_sheet(sheet_id: int, _: Principal = Depends(require_permission("ai", "add")), db: Session = Depends(get_db)):
-    """AI 评分（桩实现）。
+def score_answer_sheet(sheet_id: int, principal: Principal = Depends(require_permission("ai", "add")), db: Session = Depends(get_db)):
+    """重新判分（确定性，替代原满分桩）。
 
-    真实流程：调用系统设置中配置的 Qwen-VL（阿里云百炼）识别答题卡图片 → 逐题评分。
-    此处为可运行桩：按试卷题目生成 QuestionScore（满分占位，ai_confidence=0.9），
-    并标记 ai_status=completed。待 AI 模型配置注入后替换 score 内部实现。
+    - 客观题按已入库的学生答案与标准答案归一化比对，更新 ai_score/final_score；
+    - upsert 语义：教师已接管的行（teacher_modified/teacher_confirmed）保留人工结果；
+    - 主观题(essay)不自动判分，保持待教师评分；
+    - 无学生答案时返回明确错误，不再生成满分假数据。
     """
     sheet = db.query(models.AnswerSheet).filter(models.AnswerSheet.id == sheet_id).first()
     if not sheet:
         raise NotFoundError("答题卡", sheet_id)
-    sheet.ai_status = "processing"
-    db.commit()
     task = db.query(models.ExamTask).filter(models.ExamTask.id == sheet.task_id).first()
-    paper = db.query(models.Paper).filter(models.Paper.id == task.paper_id).first()
-    pqs = (
-        db.query(models.PaperQuestion)
-        .filter(models.PaperQuestion.paper_id == paper.id)
-        .order_by(models.PaperQuestion.sort_order)
-        .all()
-    )
-    db.query(models.QuestionScore).filter(models.QuestionScore.answer_sheet_id == sheet_id).delete()
-    for pq in pqs:
-        ai_max = pq.score or 0
-        qs = models.QuestionScore(
-            answer_sheet_id=sheet_id,
-            task_id=sheet.task_id,
-            student_id=sheet.student_id,
-            paper_question_id=pq.id,
-            question_number=pq.sort_order,
-            correct_answer=pq.answer_key,
-            ai_score=ai_max,
-            ai_max_score=ai_max,
-            ai_confidence=0.9,
-            ai_explanation="AI 评分（桩，待接入 Qwen-VL 视觉识别）",
-            ai_raw_output={"stub": True},
-            final_score=ai_max,
-            score_status="ai_scored",
-        )
-        db.add(qs)
-    sheet.ai_status = "completed"
+    if not task:
+        raise NotFoundError("考试任务", sheet.task_id)
+    _ensure_task_owner(db, task, principal)
+    rows = db.query(models.QuestionScore).filter(models.QuestionScore.answer_sheet_id == sheet_id).all()
+    if not rows:
+        raise ValidationError("该答题卡没有学生答案数据，请先上传含识别结果的答题卡")
+    pqs = {
+        pq.id: pq
+        for pq in db.query(models.PaperQuestion).filter(models.PaperQuestion.paper_id == task.paper_id).all()
+    }
+    qtype_cache: dict = {}
+    for qs in rows:
+        pq = pqs.get(qs.paper_question_id)
+        if not pq:
+            continue
+        if qs.paper_question_id not in qtype_cache:
+            q = (
+                db.query(models.Question).filter(models.Question.id == pq.question_id).first()
+                if pq.question_id
+                else None
+            )
+            qtype_cache[qs.paper_question_id] = q.ques_type if q else "essay"
+        if qtype_cache[qs.paper_question_id] == "essay":
+            continue  # 主观题不动，等教师
+        if qs.score_status in ("teacher_modified", "teacher_confirmed") and qs.teacher_score is not None:
+            continue  # 教师已接管，保留人工评分
+        ok = _grade_objective(qtype_cache[qs.paper_question_id], qs.student_answer, qs.correct_answer)
+        if ok is None:
+            continue
+        qs.ai_score = float(pq.score or 0) if ok else 0.0
+        qs.ai_max_score = pq.score or 0
+        qs.ai_confidence = 1.0
+        qs.ai_explanation = "客观题自动判分（重新评分）"
+        qs.final_score = qs.ai_score
+        qs.score_status = "ai_scored"
+    has_ungraded = any(qs.final_score is None for qs in rows)
+    sheet.ai_status = "processing" if has_ungraded else "completed"
     sheet.ai_completed_at = datetime.datetime.now(datetime.timezone.utc)
+    if task.status in ("draft", "pending", "in_exam"):
+        task.status = "scoring"
     db.commit()
-    return {"code": 0, "message": "scored", "data": {"answer_sheet_id": sheet_id}}
+    return {"code": 0, "message": "rescored", "data": {"answer_sheet_id": sheet_id}}
 
 
 @router.get("/answer-sheets/{sheet_id}/scores", response_model=List[QuestionScoreOut])
 def list_scores(sheet_id: int, principal: Principal = Depends(require_auth), db: Session = Depends(get_db)):
+    sheet = db.query(models.AnswerSheet).filter(models.AnswerSheet.id == sheet_id).first()
+    if not sheet:
+        raise NotFoundError("答题卡", sheet_id)
+    task = db.query(models.ExamTask).filter(models.ExamTask.id == sheet.task_id).first()
+    if not task:
+        raise NotFoundError("考试任务", sheet.task_id)
+    _ensure_task_owner(db, task, principal)
     rows = db.query(models.QuestionScore).filter(models.QuestionScore.answer_sheet_id == sheet_id).all()
     return [QuestionScoreOut.model_validate(r) for r in rows]
 
 
 @router.patch("/question-scores/{qid}", response_model=QuestionScoreOut)
-def adjust_score(qid: int, body: QuestionScoreUpdate, _: Principal = Depends(require_permission("ai", "edit")), db: Session = Depends(get_db)):
+def adjust_score(qid: int, body: QuestionScoreUpdate, principal: Principal = Depends(require_permission("ai", "edit")), db: Session = Depends(get_db)):
     qs = db.query(models.QuestionScore).filter(models.QuestionScore.id == qid).first()
     if not qs:
         raise NotFoundError("评分", qid)
+    task = db.query(models.ExamTask).filter(models.ExamTask.id == qs.task_id).first()
+    if not task:
+        raise NotFoundError("考试任务", qs.task_id)
+    _ensure_task_owner(db, task, principal)
     if body.teacher_score is not None:
+        if body.teacher_score < 0 or (qs.ai_max_score and body.teacher_score > qs.ai_max_score):
+            raise ValidationError(f"教师评分需在 0 ~ {qs.ai_max_score or '满分'} 之间")
         qs.teacher_score = body.teacher_score
         qs.final_score = body.teacher_score
         qs.score_status = "teacher_modified" if body.teacher_score != qs.ai_score else "teacher_confirmed"
@@ -397,7 +539,11 @@ def _compute_task_dashboard(db: Session, t: models.ExamTask) -> ExamDashboardOut
         .filter(models.TaskAssignment.task_id == t.id)
         .all()
     )
-    sheets = db.query(models.AnswerSheet).filter(models.AnswerSheet.task_id == t.id).all()
+    sheets = (
+        db.query(models.AnswerSheet)
+        .filter(models.AnswerSheet.task_id == t.id, models.AnswerSheet.record_status == "active")
+        .all()
+    )
     out.student_count = len(assigned)
     out.upload_count = len(sheets)
     if out.student_count:
@@ -426,12 +572,16 @@ def _compute_task_dashboard(db: Session, t: models.ExamTask) -> ExamDashboardOut
         if pq.question_id:
             qid_to_pq[pq.question_id] = pq
 
-    # 每题评分（仅答题卡已有的）
+    # 每题评分（仅有效答题卡；排除被替换的 superseded 旧卡，防止双卡重复累加）
+    active_sheet_ids = [s.id for s in sheets]
     scores = (
         db.query(models.QuestionScore)
-        .filter(models.QuestionScore.task_id == t.id)
+        .filter(
+            models.QuestionScore.task_id == t.id,
+            models.QuestionScore.answer_sheet_id.in_(active_sheet_ids),
+        )
         .all()
-    )
+    ) if active_sheet_ids else []
     if not scores:
         return out
 

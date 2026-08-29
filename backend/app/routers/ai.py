@@ -17,6 +17,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from .. import models
+from ..core.config import settings
 from ..core.db import SessionLocal
 from ..core.errors import NotFoundError, ValidationError
 from ..core.logging import logger
@@ -166,8 +167,10 @@ def recognize_answer_sheet(body: RecognizeAnswerSheetBody, _: Principal = Depend
         raise NotFoundError("考试任务", body.task_id)
     if not body.image_base64:
         raise ValidationError("缺少答题卡图片")
-    if not body.api_key:
-        raise ValidationError("未配置 AI 模型 API Key（系统设置→AI模型配置）")
+    # 密钥优先级：服务端配置（AI_ZHIPU_API_KEY）> 前端传入（兼容旧版前端），
+    # 服务端配置后凭证不再经浏览器传输
+    if not body.api_key and not settings.ai_zhipu_api_key:
+        raise ValidationError("未配置 AI 模型 API Key（系统设置→AI模型配置，或服务端 AI_ZHIPU_API_KEY）")
 
     paper = db.query(models.Paper).filter(models.Paper.id == task.paper_id).first()
     pqs = (
@@ -190,7 +193,7 @@ def recognize_answer_sheet(body: RecognizeAnswerSheetBody, _: Principal = Depend
     if body.provider != "zhipu":
         raise ValidationError(f"当前仅支持智谱 GLM-4V 视觉识别（收到 provider={body.provider}）")
 
-    raw = _call_zhipu(body.api_key, body.model, body.image_base64, prompt)
+    raw = _call_zhipu(body.api_key or settings.ai_zhipu_api_key, body.model, body.image_base64, prompt)
     data = _parse_json(raw)
 
     answers = []

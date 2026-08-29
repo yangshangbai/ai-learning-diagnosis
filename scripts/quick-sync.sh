@@ -16,12 +16,13 @@ GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 
 echo -e "${BLUE}⚡ 快速同步 (后端) → ${SSH_USER}@${SSH_HOST}${NC}"
 
-# 1. Sync backend + root configs via tar+ssh
-echo -e "${YELLOW}[1/3] 同步后端+配置...${NC}"
+# 1. Sync backend + demo 前端代码文件 + root configs via tar+ssh
+#    (demo 仅同步代码文件 index.html/api-bridge.js；images 数据量大不随包)
+echo -e "${YELLOW}[1/3] 同步后端+demo前端+配置...${NC}"
 cd "$PROJECT_DIR"
 tar czf - --exclude='__pycache__' --exclude='*.pyc' --exclude='venv' \
     --exclude='.env' --exclude='uploads' --exclude='*.db' --exclude='*.db-journal' \
-    backend AGENTS.md | \
+    backend frontend/demo/index.html frontend/demo/api-bridge.js AGENTS.md | \
     ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$SSH_USER@$SSH_HOST" \
     "cd $REMOTE_DIR && tar xzf - --overwrite 2>/dev/null || tar xzf -"
 echo -e "${GREEN}  ✓ 同步完成${NC}"
