@@ -1,7 +1,21 @@
 # 项目全局规则 — 教研管理平台(AI学习诊断系统)v2
 
-> 版本: v2.0.0 | 更新: 2026-08-29 | 架构基线: git `main` @ `ff622a7`(Workbuddy 重设计版)
+> 版本: v2.0.1 | 更新: 2026-08-30 | 架构基线: git `main`(Workbuddy 重设计版;tag v2.0.0=闭环修复前快照, v2.0.1=闭环修复)
 > 逆向分析全套文档: **[docs/reverse/](docs/reverse/README.md)** ← 接手项目先读这个
+> Agent工程持久记忆: **[docs/agent-memory/AGENT-REGISTRY.md](docs/agent-memory/AGENT-REGISTRY.md)** ← 派活前先读这个
+
+---
+
+## 🤖 Agent工程管理框架(全局强制,2026-08-30 生效,任何新任务第一步)
+
+1. **新任务必须先输出固定模板**(出完计划才准调度干活): 任务需求分析报告 → Agent工程管理方案 → 项目记忆更新计划 → 主Agent调度&CodeX流水线执行计划。
+2. **单批次业务子Agent ≤ 4**(主Agent不计配额);复杂任务切多批次。
+3. **开发任务强制走 CodeX 九阶段流水线**,禁止跳阶段,逐阶段经主Agent审查放行:
+   需求分析→产品设计→产品设计审查→缺陷修改→开发设计→开发程序→测试程序→修改BUG→交付用户测试。
+4. **非开发任务**可跳流水线,但需在需求分析报告中写明"本任务不属于软件开发,不启用CodeX研发Skill集"。
+5. 每个开发类 Agent 必须绑定 CodeX Skill;子Agent 输出一律经主Agent中转,不得直达用户。
+6. 任务闭环后清空全部临时上下文;持久记忆只存 Agent档案/映射表/Skill基线/约束(见 AGENT-REGISTRY.md 第五章)。
+7. 新任务派活前先读 AGENT-REGISTRY.md 的《任务类型→AgentID映射索引表》,优先复用既有 Agent。
 
 ---
 
