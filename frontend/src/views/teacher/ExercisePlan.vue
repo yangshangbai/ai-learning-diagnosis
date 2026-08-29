@@ -102,7 +102,13 @@
           </div>
 
           <div style="font-size:12px;color:var(--gray-500);line-height:1.5;padding:10px 12px;background:var(--gray-50);border-radius:8px;margin-bottom:12px">
-            系统会根据学生近期错题、薄弱知识点和历史难度自动匹配高质量题目。
+            系统会根据学生近期错题、薄弱知识点和历史难度自动匹配高质量题目。可通过"📋 从题库选题"按钮手动选择。
+          </div>
+
+          <div style="display:flex;gap:8px;margin-bottom:8px">
+            <button class="btn btn-outline btn-block" style="flex:1" @click="openQuestionPicker" :disabled="!plan.studentIds.length || !plan.kp">
+              📋 从题库选题
+            </button>
           </div>
 
           <div style="display:flex;gap:8px">
@@ -225,6 +231,7 @@ import { exercisesAPI } from '@/api/exercises'
 import { studentsAPI } from '@/api/students'
 import { diagnosesAPI } from '@/api/diagnoses'
 import { aiAPI } from '@/api/ai'
+import request from '@/api/request'
 import BottomNav from '@/components/BottomNav.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -246,6 +253,15 @@ const allStudents = ref([])
 	const editModalData = ref(null)
 	const editSaving = ref(false)
 	const aiSuggestion = ref('')
+
+	// ── Question Picker ──
+	const showPicker = ref(false)
+	const pickerQuestions = ref([])
+	const pickerCategories = ref([])
+	const pickerSelected = ref([])
+	const pickerDifficulty = ref('')
+	const pickerCategory = ref('')
+	const selectedQuestionIds = ref([])
 
 	const defaultPlan = () => ({
 	  studentIds: [],
@@ -421,6 +437,21 @@ function cancelEdit() {
   editingPlanId.value = null
   plan.value = defaultPlan()
 }
+
+// ── Question Picker ──
+async function openQuestionPicker() {
+  showPicker.value = true; pickerSelected.value = [...selectedQuestionIds.value]
+  await loadPickerQuestions()
+  try { const res = await request.get('/questions/categories'); pickerCategories.value = Array.isArray(res) ? res : (res?.items||res?.data||[]) } catch {}
+}
+async function loadPickerQuestions() {
+  const params = { kp_name: plan.value.kp, status: 'approved' }
+  if (pickerDifficulty.value) params.difficulty = parseInt(pickerDifficulty.value)
+  if (pickerCategory.value) params.category_id = pickerCategory.value
+  try { const res = await request.get('/questions', { params }); pickerQuestions.value = res?.items || res?.data || [] } catch { pickerQuestions.value = [] }
+}
+function togglePickerSelect(id) { const i = pickerSelected.value.indexOf(id); i>=0 ? pickerSelected.value.splice(i,1) : pickerSelected.value.push(id) }
+function confirmPickerSelection() { selectedQuestionIds.value = [...pickerSelected.value]; showPicker.value = false; showToast('已选'+pickerSelected.value.length+'题') }
 
 async function deletePlan(p) {
   if (!confirm('确定删除该练习计划?')) return
