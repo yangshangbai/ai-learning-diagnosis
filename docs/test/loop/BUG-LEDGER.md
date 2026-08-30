@@ -27,3 +27,6 @@
 | BUG-L008 | R3 | BF1 展示层 | P3 | 零权限时 /auth/me 与 login 兜底展示全量权限,与403执行不一致,误导前端菜单 | auth.py/security.py 的 `or all_permissions()/or default` 展示兜底 | **FIXED v2.0.5**(展示与执行同源;回归✓) |
 
 | BUG-L009 | R4 | BF9 工作台 | P2 | 登录后首屏 KPI 全 0、最近任务表空(异步加载竞态),二次进入数据正确(108/2/1/5/4/2+任务行) | 首屏渲染与数据加载时序 | OPEN(待复测,疑仅首屏竞态) |
+
+| BUG-L010 | R5 | BF7/BF4 级联 | **P1** | 删题后 GET /papers/{id}/questions 500,试卷快照丢失(设计=置NULL保留) | PaperQuestionOut.question_id 非可选int,校验NULL失败 | **FIXED v2.0.7**(改Optional;回归2行含删题行✓) |
+| BUG-L011 | R5 | BF3 级联 | **P1** | 删教师500(先删users违反teachers_user_id_fkey),账号未注销仍可登录 | 服务器版删除顺序错误 + Teacher/User无relationship致ORM删除乱序 | **FIXED v2.0.7**(教师本体命令式批量删除后再删账号;回归删除200+登录401✓) |

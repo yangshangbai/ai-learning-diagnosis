@@ -32,7 +32,7 @@ class PaperUpdate(BaseModel):
 class PaperQuestionOut(BaseModel):
     id: int
     paper_id: int
-    question_id: int
+    question_id: Optional[int] = None  # 删题后置 NULL 保留快照（BUG-L010：非可选曾致 500）
     sort_order: int
     score: int
     answer_key: Optional[str] = None

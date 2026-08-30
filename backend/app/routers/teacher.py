@@ -225,13 +225,16 @@ def delete_teacher(
     db.query(models.ExamTask).filter(models.ExamTask.creator_id == teacher_id).update(
         {models.ExamTask.creator_id: None}, synchronize_session=False
     )
-    # 3) 关联的登录账号（教师与 User 一一对应，删教师即注销账号）
+    # 3) 教师本体（命令式删除：Teacher/User 无 relationship()，ORM 不排序表级外键，
+    #    必须先发 teachers 的 DELETE 再删 users，否则 teachers_user_id_fkey 违约——BUG-L011）
+    db.query(models.Teacher).filter(models.Teacher.id == teacher_id).delete(
+        synchronize_session=False
+    )
+    # 4) 关联的登录账号（教师与 User 一一对应，删教师即注销账号）
     if t.user_id:
         u = db.query(models.User).filter(models.User.id == t.user_id).first()
         if u:
             db.delete(u)
-    # 4) 教师本体
-    db.delete(t)
     db.commit()
     logger.info("teacher_deleted", extra={"id": teacher_id})
     return {"code": 0, "message": "deleted", "data": None}
