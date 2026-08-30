@@ -34,3 +34,12 @@
 | BUG-L017 | R-QR | BF9 前端图表 | P2 | 任务详情逐题正确率图 backgroundColor 三元无短路,parsed undefined 读 .y 崩溃(Chart.js TypeError 阻塞页面) | 三元 else 分支未判空 | **FIXED v2.0.9**(类型守卫;回归navigate正常✓) |
 
 | (L015) | R-QR后 | BF7/BF8 | ~~P2~~ | 组卷快照未存ques_type,删题后已有考试重判分失型 | PaperQuestion 无题型列 | **FIXED v2.1.0**(加ques_type列+幂等迁移回填+全链取快照;删题后重评分5/5满分0None✓) |
+
+## 备份恢复模块(CX-BK-REV/DEV/QA 三Agent流水)
+
+| ID | 级别 | 描述 | 状态 |
+|----|------|------|------|
+| DR-01~11 | P0×1/P1×5/P2×5 | 设计评审11项(恢复编排自杀P0/锁残留/.env归属/manifest校验/sudo链/PG属主/subprocess/磁盘/教研云运行态/路由) | 全部吸收进设计v1.1 |
+| BQ-01 | **P0** | data/full恢复后db_grants必炸(两层根因: REASSIGN波及共享对象 + \gexec元命令在-c模式不执行 + grep前导空格误判),服务崩溃循环 | **FIXED**(REASSIGN弃用→DO块逐对象ALTER+精确GRANT+二次自修;回归: data恢复19步全绿,db_grants True,health ok,属主0异常) |
+| BQ-02 | P1 | 恢复失败无自动回滚(依赖pre_backup人工指引) | OPEN(下迭代;BQ-01修复后失败面已大幅缩小) |
+| BQ-03 | P3 | 恢复窗口status经主服务返回502,无法区分停机/故障 | OPEN(架构限制,记录) |

@@ -273,24 +273,35 @@ if [ -f "$STAGING/db.sql.gz" ]; then
     || { emit "db_import" "false" "psql_import_failed"; exit 1; }
   emit "db_import" "true" "imported"
 
-  # 属主修正 + 授权（DR-07）：弃用 REASSIGN OWNED（会波及共享对象必炸——BQ-01），
-  # 改逐对象 ALTER OWNER（\gexec）+ 精确 GRANT
+  # 属主修正 + 授权（DR-07）：弃用 REASSIGN OWNED（波及共享对象必炸——BQ-01）；
+  # \gexec 为 psql 元命令在 -c 模式不可用（BQ-01 二次根因），改用 DO 块逐对象 ALTER（单语句 -c 可行）
   GRANT_SQL="ALTER DATABASE $DB_NAME OWNER TO $DB_NAME;
-SELECT format('ALTER TABLE public.%I OWNER TO $DB_NAME', tablename) FROM pg_tables WHERE schemaname='public' \gexec
-SELECT format('ALTER SEQUENCE public.%I OWNER TO $DB_NAME', sequencename) FROM pg_sequences WHERE schemaname='public' \gexec
-SELECT format('ALTER FUNCTION public.%I(%s) OWNER TO $DB_NAME', p.proname, pg_get_function_identity_arguments(p.oid)) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' \gexec
+DO \$\$
+DECLARE r record;
+BEGIN
+  FOR r IN SELECT tablename FROM pg_tables WHERE schemaname='public' LOOP
+    EXECUTE format('ALTER TABLE public.%I OWNER TO $DB_NAME', r.tablename);
+  END LOOP;
+  FOR r IN SELECT sequencename FROM pg_sequences WHERE schemaname='public' LOOP
+    EXECUTE format('ALTER SEQUENCE public.%I OWNER TO $DB_NAME', r.sequencename);
+  END LOOP;
+  FOR r IN SELECT p.oid FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' LOOP
+    EXECUTE format('ALTER FUNCTION public.%I(%s) OWNER TO $DB_NAME', r.proname, pg_get_function_identity_arguments(r.oid));
+  END LOOP;
+END
+\$\$;
 GRANT ALL ON ALL TABLES IN SCHEMA public TO $DB_NAME;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO $DB_NAME;
 GRANT ALL ON ALL FUNCTIONS IN SCHEMA public TO $DB_NAME;
 GRANT ALL ON SCHEMA public TO $DB_NAME;"
   if ! sudo -u postgres psql -d "$DB_NAME" -v ON_ERROR_STOP=1 -c "$GRANT_SQL" >/dev/null 2>&1; then
     emit "db_grants" "false" "grant_failed_first_pass"
-    # 二次自修：逐表直接 ALTER（即使前面某条失败也尽量救回）
+    # 二次自修：per-table 直接 ALTER（-t -A 去对齐，避免 grep 误判）
     sudo -u postgres psql -d "$DB_NAME" -c "ALTER DATABASE $DB_NAME OWNER TO $DB_NAME;" >/dev/null 2>&1 || true
-    sudo -u postgres psql -d "$DB_NAME" -t -c "SELECT 'ALTER TABLE public.' || quote_ident(tablename) || ' OWNER TO $DB_NAME;' FROM pg_tables WHERE schemaname='public'" | sudo -u postgres psql -d "$DB_NAME" >/dev/null 2>&1 || true
+    sudo -u postgres psql -d "$DB_NAME" -t -A -c "SELECT 'ALTER TABLE public.' || quote_ident(tablename) || ' OWNER TO $DB_NAME;' FROM pg_tables WHERE schemaname='public'" | sudo -u postgres psql -d "$DB_NAME" >/dev/null 2>&1 || true
     sudo -u postgres psql -d "$DB_NAME" -c "GRANT ALL ON ALL TABLES IN SCHEMA public TO $DB_NAME; GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO $DB_NAME; GRANT ALL ON SCHEMA public TO $DB_NAME;" >/dev/null 2>&1 || true
-    sudo -u postgres psql -d "$DB_NAME" -t -c "SELECT count(*) FROM pg_tables WHERE schemaname='public' AND tableowner <> '$DB_NAME'" | grep -q '^0$' \
-      || { emit "db_grants" "false" "repair_failed_see_journal"; exit 1; }
+    BAD=$(sudo -u postgres psql -d "$DB_NAME" -t -A -c "SELECT count(*) FROM pg_tables WHERE schemaname='public' AND tableowner <> '$DB_NAME'")
+    [ "$BAD" = "0" ] || { emit "db_grants" "false" "repair_failed_non_app_tables=$BAD"; exit 1; }
     emit "db_grants" "true" "repaired via per-table fallback"
   fi
   emit "db_grants" "true" "ownership and grants fixed"
