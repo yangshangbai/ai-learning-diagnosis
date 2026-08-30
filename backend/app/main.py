@@ -37,6 +37,7 @@ from .routers.draft import router as draft_router
 from .routers.ai import router as ai_router
 from .routers.ai_select import router as ai_select_router
 from .routers.tag import router as tag_router
+from .routers.backup import router as backup_router
 
 
 @asynccontextmanager
@@ -141,6 +142,7 @@ app.include_router(draft_router)
 app.include_router(ai_router)
 app.include_router(ai_select_router)
 app.include_router(tag_router)
+app.include_router(backup_router)
 
 
 # 仅非生产环境存在：用于自测「后端未捕获异常 → 全局 handler 自动落库」

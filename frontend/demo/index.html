@@ -976,6 +976,7 @@ const ROUTES = {
   'system.user': { title:'用户管理', render: renderUserPage, menu:'系统设置' },
   'system.ai-model': { title:'AI模型配置', render: renderAiModelConfig, menu:'系统设置' },
   'system.audit-log': { title:'操作日志', render: renderAuditLogPage, menu:'系统设置' },
+  'system.backup': { title:'备份与恢复', render: renderBackup, menu:'系统设置' },
 };
 
 function navigate(route, params={}) {
@@ -1117,6 +1118,9 @@ function renderSidebar() {
       </div>
       <div class="nav-item" data-route="system.audit-log" onclick="navigate('system.audit-log')">
         <span class="icon">📜</span> 操作日志
+      </div>
+      <div class="nav-item" data-route="system.backup" onclick="navigate('system.backup')">
+        <span class="icon">💾</span> 备份与恢复
       </div>` : ''}
     </div>
     ` : ''}
@@ -8005,6 +8009,212 @@ function auditLogPageChange(newPage, newPageSize) {
   // 取最近一次 logs（DATA.systemLogs 已由 api-bridge 加载）
   const logs = (DATA.systemLogs && DATA.systemLogs.length) ? DATA.systemLogs : [];
   el.innerHTML = _renderAuditLogBody(logs);
+}
+
+/* ================================================================
+   PAGE: BACKUP & RESTORE（系统设置 → 备份与恢复）
+   权限: system:view（菜单随系统设置组隐藏；页面内再加路由守卫）
+   端点: GET/POST /system/backup/*, POST /system/restore, GET /system/restore/status
+   流程: 三创建卡片(确认+spinner) → 列表(下载/恢复/删除) → 恢复模态(红字警示+
+         pre_backup 默认开 + restore_env 默认关 + 我已知晓解锁) → 轮询 status 展示 steps
+   运维约束: 恢复窗口内禁止 quick-sync / deploy（已在页面红字提示）
+   ================================================================ */
+const BACKUP_TYPE_NAME = { program: '程序备份', data: '数据备份', full: '整体备份' };
+let _backupPollTimer = null;
+
+function renderBackup() {
+  // 路由守卫：非 admin 且无 system:view 时拒绝渲染
+  if (STATE.role !== 'admin' && !hasPerm('system', 'view')) {
+    return `<div class="page-header"><h2>备份与恢复</h2></div><div class="card"><p style="color:var(--error);">无权访问备份与恢复（需要 system 模块「显示」权限）。</p></div>`;
+  }
+  setTimeout(backupRefresh, 0);  // 渲染后异步加载列表
+  return `
+    <div class="page-header">
+      <h2>备份与恢复</h2>
+      <div class="actions"><button class="btn btn-sm" onclick="backupRefresh()">🔄 刷新</button></div>
+    </div>
+    <div class="card">
+      <div class="card-title">📦 创建备份</div>
+      <p style="margin:0 0 12px;color:var(--text-sub);font-size:13px;line-height:1.7;">
+        程序备份 = 后端/前端代码、脚本、文档（不含 .env 与上传文件）；数据备份 = 数据库 + .env + 上传文件 + 演示图片 + 教研云凭证；
+        整体备份 = 两者之和。磁盘空闲不足 2GB 时将拒绝创建；恢复窗口内禁止 quick-sync / deploy 操作。
+      </p>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;">
+        <button class="btn btn-primary" id="backupBtnProgram" onclick="backupCreate('program')">🧩 程序备份</button>
+        <button class="btn btn-primary" id="backupBtnData" onclick="backupCreate('data')">🗄️ 数据备份</button>
+        <button class="btn btn-primary" id="backupBtnFull" onclick="backupCreate('full')">💾 整体备份</button>
+      </div>
+    </div>
+    <div class="card" style="margin-top:14px;">
+      <div class="card-title">🗂️ 备份列表</div>
+      <div id="backupListBody"><p style="color:var(--text-sub);">加载中…</p></div>
+    </div>
+    <div class="card" id="restoreProgressCard" style="margin-top:14px;display:none;">
+      <div class="card-title">♻️ 恢复进度</div>
+      <div id="restoreProgressBody"></div>
+    </div>
+  `;
+}
+
+function _backupEsc(s) {
+  return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function _fmtBackupSize(bytes) {
+  const n = Number(bytes) || 0;
+  if (n >= 1024 * 1024 * 1024) return (n / 1024 / 1024 / 1024).toFixed(2) + ' GB';
+  if (n >= 1024 * 1024) return (n / 1024 / 1024).toFixed(2) + ' MB';
+  if (n >= 1024) return (n / 1024).toFixed(1) + ' KB';
+  return n + ' B';
+}
+
+async function backupRefresh() {
+  const el = document.getElementById('backupListBody');
+  if (!el) return;
+  el.innerHTML = '<p style="color:var(--text-sub);">加载中…</p>';
+  const resp = await apiGet('/system/backup/list');
+  const arr = Array.isArray(resp) ? resp : ((resp && (resp.items || resp.data)) || []);
+  if (!document.getElementById('backupListBody')) return;  // 页面已切换
+  if (!arr.length) { el.innerHTML = '<p style="color:var(--text-sub);">暂无备份，点击上方按钮创建。</p>'; return; }
+  el.innerHTML = `
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>文件名</th><th>类型</th><th>版本</th><th class="table-mobile-hide">大小</th><th class="table-mobile-hide">创建时间</th><th>操作</th></tr></thead>
+        <tbody>
+          ${arr.map(b => `
+            <tr>
+              <td style="word-break:break-all;">${b.damaged ? '<span class="badge badge-error">损坏</span> ' : ''}${_backupEsc(b.filename)}</td>
+              <td><span class="badge badge-primary">${_backupEsc(BACKUP_TYPE_NAME[b.type] || b.type || '—')}</span></td>
+              <td>${_backupEsc(b.version || '—')}</td>
+              <td class="table-mobile-hide">${_fmtBackupSize(b.size_bytes)}</td>
+              <td class="table-mobile-hide" style="font-size:12px;">${_backupEsc(String(b.created_at || '').replace('T', ' ') || '—')}</td>
+              <td style="white-space:nowrap;">
+                ${b.damaged ? '' : `<button class="btn btn-sm btn-text" onclick="backupDownload('${_backupEsc(b.filename)}')">⬇️ 下载</button><button class="btn btn-sm btn-text" onclick="backupRestoreModal('${_backupEsc(b.filename)}')">♻️ 恢复</button>`}
+                <button class="btn btn-sm btn-text" style="color:var(--error);" onclick="backupDelete('${_backupEsc(b.filename)}')">🗑️ 删除</button>
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function _backupCreateBusy(busy) {
+  ['backupBtnProgram', 'backupBtnData', 'backupBtnFull'].forEach(id => {
+    const b = document.getElementById(id);
+    if (!b) return;
+    if (busy) { b.dataset.orig = b.textContent; b.textContent = '⏳ 创建中…'; b.disabled = true; }
+    else if (b.dataset.orig) { b.textContent = b.dataset.orig; b.disabled = false; }
+  });
+}
+
+async function backupCreate(type) {
+  const name = BACKUP_TYPE_NAME[type] || type;
+  if (!confirm(`确定创建「${name}」吗？\n创建期间不能进行其他备份/恢复操作，过程约需数分钟。`)) return;
+  _backupCreateBusy(true);
+  try {
+    const resp = await apiPost('/system/backup/create', { type });
+    if (resp && resp.filename) {
+      showToast(`${name}已完成：${resp.filename}（${_fmtBackupSize(resp.size_bytes)}）`);
+      await backupRefresh();
+    } else {
+      const err = (window._lastApiError && window._lastApiError.message) || '请检查后端服务与磁盘空间';
+      showToast(`${name}失败：${err}`, 'error');
+    }
+  } finally {
+    _backupCreateBusy(false);
+  }
+}
+
+function backupDownload(filename) {
+  downloadBlob(_apiBase() + '/system/backup/download?filename=' + encodeURIComponent(filename), filename);
+}
+
+async function backupDelete(filename) {
+  if (!confirm(`确定删除备份「${filename}」吗？\n删除后不可恢复！`)) return;
+  const resp = await apiPost('/system/backup/delete', { filename });
+  if (!resp) { showToast('删除失败：' + ((window._lastApiError && window._lastApiError.message) || '请稍后重试'), 'error'); return; }
+  await backupRefresh();
+  showToast('备份已删除');
+}
+
+function backupRestoreModal(filename) {
+  openModal('♻️ 恢复备份 — ' + _backupEsc(filename), `
+    <p style="font-size:13px;line-height:1.8;margin:0 0 8px;">
+      将把备份内容恢复到服务器：<b>程序包</b>覆盖代码文件；<b>数据包/整体包</b>会<b style="color:var(--error);">清空并重建数据库</b>、覆盖上传文件。
+      恢复期间服务将短暂停止，<b>恢复窗口内禁止 quick-sync / deploy</b>。
+    </p>
+    <p style="color:var(--error);font-size:13px;font-weight:600;margin:0 0 8px;">⚠️ 恢复会覆盖当前系统数据，此操作不可撤销！</p>
+    <label style="display:flex;gap:6px;align-items:flex-start;margin:8px 0;font-size:13px;cursor:pointer;">
+      <input type="checkbox" id="restorePreBackup" checked style="margin-top:3px;">
+      <span>恢复前先创建一次「整体」安全备份（推荐；备份失败将自动中止恢复）</span>
+    </label>
+    <label style="display:flex;gap:6px;align-items:flex-start;margin:8px 0;font-size:13px;cursor:pointer;">
+      <input type="checkbox" id="restoreEnv" style="margin-top:3px;">
+      <span>同时恢复 backend/.env 配置（<span style="color:var(--error);font-weight:600;">将使全部用户登录态失效</span>，默认跳过）</span>
+    </label>
+    <label style="display:flex;gap:6px;align-items:flex-start;margin:8px 0;font-size:13px;cursor:pointer;">
+      <input type="checkbox" id="restoreAck" onchange="(function(cb){var b=document.getElementById('restoreGoBtn'); if(b) b.disabled=!cb.checked;})(this)" style="margin-top:3px;">
+      <span>我已知晓上述风险，确认执行恢复</span>
+    </label>
+  `, `<button class="btn" onclick="closeModal()">取消</button><button class="btn btn-danger" id="restoreGoBtn" disabled onclick="backupRestoreConfirm('${_backupEsc(filename)}')">开始恢复</button>`);
+}
+
+async function backupRestoreConfirm(filename) {
+  const preCb = document.getElementById('restorePreBackup');
+  const envCb = document.getElementById('restoreEnv');
+  const btn = document.getElementById('restoreGoBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ 处理中…（含恢复前安全备份，请勿关闭）'; }
+  const resp = await apiPost('/system/restore', {
+    filename: filename,
+    confirm: true,
+    pre_backup: preCb ? !!preCb.checked : true,
+    restore_env: envCb ? !!envCb.checked : false,
+  });
+  if (!resp || !resp.restore_id) {
+    if (btn) { btn.disabled = false; btn.textContent = '开始恢复'; }
+    showToast('恢复触发失败：' + ((window._lastApiError && window._lastApiError.message) || '请稍后重试'), 'error');
+    return;
+  }
+  closeModal();
+  showToast('恢复任务已启动（' + resp.restore_id + '）', 'warning');
+  _backupShowProgress(resp.restore_id);
+}
+
+function _backupShowProgress(restoreId) {
+  const card = document.getElementById('restoreProgressCard');
+  const body = document.getElementById('restoreProgressBody');
+  if (!card || !body) return;
+  card.style.display = '';
+  body.innerHTML = `<p style="color:var(--text-sub);font-size:13px;margin:0 0 8px;">恢复任务 <b>${_backupEsc(restoreId)}</b> 进行中…</p><div id="restoreSteps"><p style="color:var(--text-sub);font-size:13px;">等待进度…</p></div>`;
+  if (_backupPollTimer) { clearInterval(_backupPollTimer); _backupPollTimer = null; }
+  _backupPoll(restoreId);
+  _backupPollTimer = setInterval(() => _backupPoll(restoreId), 3000);
+}
+
+function _backupStopPoll() {
+  if (_backupPollTimer) { clearInterval(_backupPollTimer); _backupPollTimer = null; }
+}
+
+async function _backupPoll(restoreId) {
+  const box = document.getElementById('restoreSteps');
+  if (!box) { _backupStopPoll(); return; }  // 页面已切换，停止轮询
+  const st = await apiGet('/system/restore/status?restore_id=' + encodeURIComponent(restoreId));
+  if (!box) { _backupStopPoll(); return; }
+  if (!st) { box.innerHTML = '<p style="color:var(--warning);font-size:13px;">进度读取失败，稍后重试…</p>'; return; }
+  const steps = st.steps || [];
+  box.innerHTML = '<ul style="font-size:13px;line-height:2;list-style:none;padding:0;margin:0;">' + steps.map(s => {
+    const okFlag = (s.ok === false) ? false : true;
+    const icon = s.step === 'done' ? (s.ok ? '✅' : '❌') : (okFlag ? '✅' : '❌');
+    return `<li>${icon} <b>${_backupEsc(s.step)}</b> — ${_backupEsc(s.detail || '')} <span style="color:var(--text-sub);font-size:12px;">${_backupEsc(s.ts || '')}</span></li>`;
+  }).join('') + '</ul>'
+    + (st.done ? '' : '<p style="color:var(--text-sub);font-size:12px;">⏳ 轮询中（每 3 秒刷新），恢复期间请勿进行 quick-sync / deploy…</p>');
+  if (st.done) {
+    _backupStopPoll();
+    showToast(st.ok ? '✅ 恢复完成' : '❌ 恢复失败，请查看进度详情', st.ok ? 'success' : 'error');
+    backupRefresh();
+  }
 }
 
 /* ================================================================

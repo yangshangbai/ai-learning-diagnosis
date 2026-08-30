@@ -22,7 +22,7 @@ echo -e "${YELLOW}[1/3] 同步后端+demo前端+配置...${NC}"
 cd "$PROJECT_DIR"
 tar czf - --exclude='__pycache__' --exclude='*.pyc' --exclude='venv' \
     --exclude='.env' --exclude='uploads' --exclude='*.db' --exclude='*.db-journal' \
-    backend frontend/demo/index.html frontend/demo/api-bridge.js AGENTS.md | \
+    backend frontend/demo/index.html frontend/demo/api-bridge.js scripts/restore_helper.sh AGENTS.md | \
     ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$SSH_USER@$SSH_HOST" \
     "cd $REMOTE_DIR && tar xzf - --overwrite 2>/dev/null || tar xzf -"
 echo -e "${GREEN}  ✓ 同步完成${NC}"
