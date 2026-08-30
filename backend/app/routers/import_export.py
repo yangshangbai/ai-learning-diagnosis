@@ -107,6 +107,7 @@ async def import_docx(
     with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp:
         tmp.write(data)
         tmp_path = tmp.name
+    result = None
     try:
         qs = qe.parse_docx(tmp_path, img_dir=DEMO_IMG_DIR,
                            subject=subject, grade=grade, difficulty=difficulty,
@@ -114,13 +115,20 @@ async def import_docx(
                            src_hash=src_hash)
         # 图片已在解析时以 <img src="images/xxx.png"> 直接插入题干（docx 内嵌图 → 文件 → 题干内联）
         img_total = sum(1 for q in qs if "<img" in (q.get("stem") or ""))
-        return {"code": 0, "message": "ok",
-                "data": {"questions": qs, "count": len(qs), "img_questions": img_total}}
+        result = {"code": 0, "message": "ok",
+                  "data": {"questions": qs, "count": len(qs), "img_questions": img_total}}
+    except Exception as e:
+        # 伪装扩展名/损坏文件：python-docx 解析失败应回 4xx 而非 500（BUG-L013）
+        result = JSONResponse(
+            {"code": 400, "message": "文件无法解析为 docx 题库，请检查文件是否完整（%s）" % str(e)[:80], "data": None},
+            400,
+        )
     finally:
         try:
             os.remove(tmp_path)
         except Exception:
             pass
+    return result
 
 
 # ================================================================

@@ -1,11 +1,12 @@
 """试卷 schemas。"""
 from typing import Optional, List
-from pydantic import BaseModel, field_validator
+from pydantic import Field, BaseModel, field_validator
 from datetime import datetime
 
 
 class PaperCreate(BaseModel):
-    name: str
+    name: str = Field(..., max_length=255)
+
     category_id: Optional[int] = None
     subject_id: Optional[int] = None
     grade_id: Optional[int] = None

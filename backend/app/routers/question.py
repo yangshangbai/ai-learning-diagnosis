@@ -11,6 +11,7 @@
 位置编码规则 §4.4：学科码(3字母)-年级码(G+数字)-知识点码(KP+3位)-序号(4位)，如 MAT-G7-KP003-0027。
 """
 from typing import Optional, List
+import re
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
@@ -31,6 +32,18 @@ from ..schemas.question import (
 )
 
 router = APIRouter(prefix="/api/v1/questions", tags=["question-bank"])
+
+# 安全护栏：题干/答案/解析为富文本域，入库前剥离 <script> 块（存储型脚本注入，BUG-L014）。
+# 公式/图片等其余 HTML 保留（教师为可信输入方，on* 属性白名单化列入后续迭代）。
+_SCRIPT_RE = re.compile(r"<script\b[\s\S]*?</script\s*>", re.IGNORECASE)
+
+
+def _strip_scripts(value):
+    if isinstance(value, str):
+        return _SCRIPT_RE.sub("", value)
+    if isinstance(value, list):
+        return [_strip_scripts(v) for v in value]
+    return value
 
 
 def get_db():
@@ -126,7 +139,11 @@ def get_question(qid: int, principal: Principal = Depends(require_permission("qu
 def create_question(body: QuestionCreate, _: Principal = Depends(require_permission("question", "add")), db: Session = Depends(get_db)):
     kid = body.knowledge_ids[0] if body.knowledge_ids else None
     code = generate_question_code(db, body.subject_id, body.grade_id, kid)
-    q = models.Question(question_code=code, **body.model_dump())
+    payload = body.model_dump()
+    for k in ("stem", "answer", "analysis"):
+        payload[k] = _strip_scripts(payload.get(k))
+    payload["options"] = _strip_scripts(payload.get("options"))
+    q = models.Question(question_code=code, **payload)
     db.add(q)
     db.commit()
     db.refresh(q)
@@ -216,6 +233,11 @@ def _prepare_import_item(db: Session, it) -> dict:
 
 @router.post("/import", response_model=PaginatedQuestion)
 def import_questions(body: QuestionImportRequest, _: Principal = Depends(require_permission("question", "add")), db: Session = Depends(get_db)):
+    for it in body.items:
+        it.stem = _strip_scripts(it.stem)
+        it.answer = _strip_scripts(it.answer)
+        it.analysis = _strip_scripts(it.analysis)
+        it.options = _strip_scripts(it.options)
     created: List[models.Question] = []
     for it in body.items:
         item_data = _prepare_import_item(db, it)

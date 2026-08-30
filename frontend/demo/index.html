@@ -943,7 +943,7 @@ function renderPager({ total, page, pageSize, onChange, pageSizes }) {
 }
 
 const ROUTES = {
-  'dashboard': { title:'工作台', render: renderDashboard, menu:'工作台' },
+  'dashboard': { title:'工作台', render: renderDashboard, afterRender: afterRenderDashboard, menu:'工作台' },
   'question-bank': { title:'题目列表', render: renderQuestionBank, menu:'题库管理' },
   'question-bank.import': { title:'导入题目', render: renderImport, menu:'题库管理' },
   'question-bank.sync': { title:'同步教研云', render: renderSyncJiaoyun, menu:'题库管理' },
@@ -1377,6 +1377,48 @@ function isMobile() {
 /* ================================================================
    PAGE: DASHBOARD
    ================================================================ */
+// 启动数据装载（boot 与页面刷新共用）。此前 loadBackendData 被两处调用但从未实现
+// （window.loadBackendData 为 undefined → 启动不装载任何列表 → 工作台 KPI 恒 0，BUG-L009 真根因）
+window.loadBackendData = window.loadBackendData || async function loadBackendData() {
+  try {
+    const [q,p,t,s,c,te] = await Promise.all([
+      apiGet('/questions?page_size=500'), apiGet('/papers?page_size=500'),
+      apiGet('/exam-tasks?page_size=500'), apiGet('/students?page_size=500'),
+      apiGet('/classes?page_size=500'), apiGet('/teachers?page_size=500'),
+    ]);
+    const pick = (r) => (r && (r.items || (r.data && r.data.items))) || [];
+    if (q) DATA.questions = pick(q);
+    if (p) DATA.papers = pick(p);
+    if (t) DATA.tasks = pick(t);
+    if (s) DATA.students = pick(s);
+    if (c) DATA.classes = pick(c);
+    if (te) DATA.teachers = pick(te);
+  } catch (e) { /* 网络失败保留空数据 */ }
+};
+
+// 工作台数据水合（BUG-L009）：首屏渲染时 DATA 列表可能尚未装载，KPI 显示 0。
+// afterRender 拉取六类列表回填 DATA 并单次重渲染（_dashHydrated 防循环）。
+let _dashHydrated = false;
+async function afterRenderDashboard() {
+  if (_dashHydrated) return;
+  _dashHydrated = true;
+  try {
+    const [q,p,t,s,c,te] = await Promise.all([
+      apiGet('/questions?page_size=500'), apiGet('/papers?page_size=500'),
+      apiGet('/exam-tasks?page_size=500'), apiGet('/students?page_size=500'),
+      apiGet('/classes?page_size=500'), apiGet('/teachers?page_size=500'),
+    ]);
+    const pick = (r) => (r && (r.items || (r.data && r.data.items))) || [];
+    if (q) DATA.questions = pick(q);
+    if (p) DATA.papers = pick(p);
+    if (t) DATA.tasks = pick(t);
+    if (s) DATA.students = pick(s);
+    if (c) DATA.classes = pick(c);
+    if (te) DATA.teachers = pick(te);
+    if (STATE.currentRoute === 'dashboard') navigate('dashboard');
+  } catch (e) { /* 网络失败保持首屏，由各列表页自行装载 */ }
+}
+
 function renderDashboard() {
   const now = new Date();
   const dateStr = now.toLocaleDateString('zh-CN', { year:'numeric', month:'long', day:'numeric', weekday:'long' });

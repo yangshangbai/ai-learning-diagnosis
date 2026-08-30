@@ -1,11 +1,12 @@
 """考试任务与 AI 评分 schemas。"""
 from typing import Optional, List
-from pydantic import BaseModel, field_validator
+from pydantic import Field, BaseModel, field_validator
 from datetime import datetime
 
 
 class ExamTaskCreate(BaseModel):
-    name: str
+    name: str = Field(..., max_length=255)
+
     paper_id: int
     category_id: Optional[int] = None
     student_ids: Optional[List[int]] = None  # 创建时可直接分配学生

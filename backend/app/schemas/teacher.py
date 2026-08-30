@@ -1,6 +1,6 @@
 """教师 schemas。新建教师包含登录账号与初始密码。"""
 from typing import Optional, List
-from pydantic import BaseModel, field_validator
+from pydantic import Field, BaseModel, field_validator
 from datetime import datetime
 
 
@@ -11,7 +11,8 @@ class TeacherClassItem(BaseModel):
 
 
 class TeacherCreate(BaseModel):
-    name: str
+    name: str = Field(..., max_length=255)
+
     gender: Optional[str] = None
     phone: Optional[str] = None
     subject_ids: Optional[List[int]] = None
