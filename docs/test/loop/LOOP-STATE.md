@@ -1,6 +1,6 @@
 # LOOP-STATE — 测试循环状态机
 
-> 更新: 2026-08-30 | 当前: **✅ R7 完成,收敛达成** | 7/7 轮
+> 更新: 2026-08-30 | 当前: **✅ LOOP收敛 + 每生QR Word需求交付** | v2.0.9
 
 ## 全局进度
 
@@ -38,3 +38,10 @@
 - 方案: [../loop/LOOP测试总体方案.md](LOOP测试总体方案.md)
 - 测试账号: admin/admin123(超管) + test_teacher_a/Test@12345(教师,班主任@TEST-小学班 id=12)
 - 测试数据: 班级12/13/14,教师6(T0006),学生14-18(A01-A05),试卷25,任务18,答题卡14(active)/13(superseded),题397-412
+
+## 追加交付(2026-08-30 下午): 每生二维码答题卡 Word
+
+- 需求: Word 每生一页带个人二维码(payload=任务号/试卷号/班级号/学生号)
+- 实现: print?format=docx + template_engine.generate_task_sheets_docx;HTML通道payload同构加cl;前端Word下载按钮
+- 验证: zxing解码双QR payload逐项断言✓ 主Agent读图✓ 单生补打✓ 前端按钮✓ L017图表崩溃顺带修复✓
+- 验证数据保留: 任务24(TEST-QR班15/生19,20/卷29)供用户自行下载复验

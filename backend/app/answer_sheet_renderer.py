@@ -136,11 +136,12 @@ def render_sheet_html(
         or (ordered[0].get("subject") if ordered else None)
         or "数学"
     )
-    qr_payload = "JY|tk={}|pp={}|st={}|sb={}|pg=1/1".format(
+    # QR payload 与 Word 通道（template_engine.build_sheet_qr_payload）同构：任务/试卷/班级/学生
+    qr_payload = "JY|tk={}|pp={}|cl={}|st={}|pg=1/1".format(
         (task or {}).get("code", "") or "",
         paper.get("code", "") or "",
+        (student or {}).get("classCode", "") or "",
         (student or {}).get("code", "") or "",
-        subject or "",
     )
     qr_data_url = generate_qr_data_url(qr_payload)
 

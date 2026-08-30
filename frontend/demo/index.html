@@ -5212,6 +5212,7 @@ function renderTaskDetail(params) {
         ${hasPerm('exam','delete') ? `<button class="btn btn-danger" onclick="deleteTask('${task.id}')">删除</button>` : ''}
         <button class="btn" onclick="downloadTaskPaperTemplate('${task.id}')">📄 下载试卷模板</button>
         <button class="btn btn-primary" onclick="printTaskAnswerSheets('${task.id}')">📄 答题卡·全部下载</button>
+        <button class="btn" onclick="downloadBlob(_apiBase() + '/exam-tasks/' + encodeURIComponent(task.id) + '/answer-sheets/print?format=docx', 'task_' + task.id + '_答题卡每生.docx')">⬇ 答题卡Word(每生二维码)</button>
         <button class="btn btn-success" onclick="aiScoreTask('${task.id}')">🤖 AI评分</button>
       </div>
     </div>
@@ -8059,7 +8060,7 @@ function postRender(route, params) {
       STATE.charts.t2 = new Chart(ctx2, {
         type:'bar',
         data:{ labels: qc.map(x => 'Q' + x.questionNumber), datasets:[
-          { label:'正确率', data: qc.map(x => x.correctRate), backgroundColor:c => c.parsed && c.parsed.y < 60 ? '#FF4D4F' : (c.parsed.y < 80 ? '#FAAD14' : '#52C41A') }
+          { label:'正确率', data: qc.map(x => x.correctRate), backgroundColor:c => (c.parsed && typeof c.parsed.y === 'number') ? (c.parsed.y < 60 ? '#FF4D4F' : (c.parsed.y < 80 ? '#FAAD14' : '#52C41A')) : '#52C41A' }
         ]},
         options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{y:{max:100,min:0}} }
       });

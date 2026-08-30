@@ -13,6 +13,7 @@
    本模块只负责把内容写进指定 out_path。
 """
 import base64
+import io
 import json
 import os
 import re
@@ -23,7 +24,7 @@ import sys
 
 try:
     from docx import Document
-    from docx.shared import Pt, Cm, RGBColor
+    from docx.shared import Pt, Cm, RGBColor, Inches
     from docx.oxml.ns import qn
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.enum.table import WD_TABLE_ALIGNMENT
@@ -417,3 +418,113 @@ def layout_from_questions(questions: list) -> dict:
     if essay:
         sections.append({"type": "essay", "questions": essay, "height_mm": sum(e["height_mm"] for e in essay)})
     return {"page_size": "A4", "sections": sections}
+
+
+# ---------------------------------------------------------------------------
+# 任务级每生答题卡 Word（2026-08-30 需求：每生一页 + 个人二维码，payload 含 任务/试卷/班级/学生）
+# ---------------------------------------------------------------------------
+def build_sheet_qr_payload(task: dict, paper: dict, student: dict) -> str:
+    """每生二维码 payload：任务号/试卷号/班级号/学生号 + 页码。"""
+    return "JY|tk={}|pp={}|cl={}|st={}|pg=1/1".format(
+        (task or {}).get("code") or "",
+        (paper or {}).get("code") or "",
+        (student or {}).get("classCode") or "",
+        (student or {}).get("code") or "",
+    )
+
+
+def _qr_png_stream(payload: str):
+    """二维码 PNG 流（与 answer_sheet_renderer.generate_qr_data_url 同规格）。"""
+    try:
+        import qrcode
+
+        img = qrcode.make(payload)
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        buf.seek(0)
+        return buf
+    except Exception:
+        return None
+
+
+def generate_task_sheets_docx(task: dict, paper: dict, students: list, questions: list, out_path: str) -> str:
+    """任务级每生答题卡 Word：每生一页，页顶机读带含真实个人二维码图片。
+
+    payload = JY|tk=任务号|pp=试卷号|cl=班级号|st=学生号|pg=1/1
+    版式为系统默认（用户自定义模板与每生 QR 的占位合并列为后续迭代）。
+    """
+    from docx.shared import Inches
+
+    doc = Document()
+    style = doc.styles["Normal"]
+    style.font.name = "宋体"
+    style._element.rPr.rFonts.set(qn("w:eastAsia"), "宋体")
+    style.font.size = Pt(11)
+
+    groups = _group_questions(questions)
+    stu_list = students or [None]
+    for idx, stu in enumerate(stu_list):
+        if idx > 0:
+            doc.add_page_break()
+
+        # ---- 机读带（表格：左信息 / 右二维码图片）----
+        payload = build_sheet_qr_payload(task, paper, stu or {})
+        tbl = doc.add_table(rows=1, cols=2)
+        left, right = tbl.rows[0].cells
+        code = _coerce((stu or {}).get("code"))
+        sname = _coerce((stu or {}).get("name"))
+        cname = _coerce((stu or {}).get("className"))
+        ccode = _coerce((stu or {}).get("classCode"))
+        p1 = left.paragraphs[0]
+        r1 = p1.add_run("任务：%s %s" % (_coerce((task or {}).get("code")), _coerce((task or {}).get("name"))))
+        _set_run_font(r1, 9, False)
+        for line in (
+            "试卷：%s" % _coerce((paper or {}).get("code") or (paper or {}).get("name")),
+            "班级：%s %s" % (ccode, cname) if (ccode or cname) else "班级：____________",
+            "学生：%s %s" % (code, sname) if (code or sname) else "学生：____________",
+        ):
+            rp = left.add_paragraph()
+            rr = rp.add_run(line)
+            _set_run_font(rr, 9, False)
+        stream = _qr_png_stream(payload)
+        if stream:
+            right.paragraphs[0].add_run().add_picture(stream, width=Inches(1.1))
+            cap = right.add_paragraph()
+            cr = cap.add_run("扫码识别")
+            _set_run_font(cr, 8, False)
+
+        # ---- 四角对位（上）----
+        top = doc.add_paragraph()
+        top.paragraph_format.space_after = Pt(6)
+        tr = top.add_run("┌")
+        _set_run_font(tr, 14, True)
+        top.add_run("            ")
+        _set_run_font(top.add_run("┐"), 14, True)
+
+        # ---- 标题 ----
+        title = "%s 答题卡" % _coerce((paper or {}).get("name"), "答题卡")
+        if code or sname:
+            title += "（%s %s）" % (code, sname)
+        _add_par(doc, title, size_pt=15, bold=True, align=WD_ALIGN_PARAGRAPH.CENTER, space_after=8)
+
+        # ---- 三分区 ----
+        for g in groups:
+            _section_title(doc, g["group_title"] + "（共 %d 题）" % len(g["items"]))
+            for item in g["items"]:
+                if g["key"] == "choice":
+                    _choice_row(doc, item)
+                elif g["key"] == "fill":
+                    _blank_row(doc, item)
+                else:
+                    _essay_grid(doc, item)
+
+        # ---- 四角对位（下）----
+        bottom = doc.add_paragraph()
+        bottom.paragraph_format.space_before = Pt(12)
+        br = bottom.add_run("└")
+        _set_run_font(br, 14, True)
+        bottom.add_run("            ")
+        _set_run_font(bottom.add_run("┘"), 14, True)
+
+    doc.save(out_path)
+    return out_path

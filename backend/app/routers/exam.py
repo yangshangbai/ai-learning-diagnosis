@@ -771,6 +771,7 @@ def _task_students(db: Session, task: models.ExamTask) -> List[dict]:
                 "code": stu.student_code,
                 "name": stu.name,
                 "className": class_name,
+                "classCode": (cls.class_code if cls else "") or "",
             }
         )
     return out
@@ -780,11 +781,15 @@ def _task_students(db: Session, task: models.ExamTask) -> List[dict]:
 def print_answer_sheets(
     task_id: int,
     student_id: Optional[int] = None,
-    format: Optional[str] = Query(None, description="预留：format=pdf（当前统一返回 HTML，前端 window.print 另存 PDF）"),
+    format: Optional[str] = Query(None, description="format=docx 返回每生一页的 Word 答题卡（含个人二维码 tk/pp/cl/st）；缺省 HTML；format=pdf 预留"),
     principal: Principal = Depends(require_permission("exam","view")),
     db: Session = Depends(get_db),
 ):
-    """任务答题卡打印：无 student_id 批量全部学生（每生一页）；有 student_id 单人补打。"""
+    """任务答题卡：无 student_id 批量全部学生（每生一页）；有 student_id 单人补打。
+
+    format=docx 时返回 Word 文件：每生一页，机读带含真实个人二维码
+    （payload = JY|tk=任务号|pp=试卷号|cl=班级号|st=学生号，2026-08-30 需求）。
+    """
     t = db.query(models.ExamTask).filter(models.ExamTask.id == task_id).first()
     if not t:
         raise NotFoundError("考试任务", task_id)
@@ -800,6 +805,25 @@ def print_answer_sheets(
     paper_dict = _paper_dict(db, paper)
     task_dict = {"code": t.task_code, "name": t.name}
     students = _task_students(db, t)
+
+    if (format or "").lower() == "docx":
+        import os as _os
+        import tempfile as _tempfile
+
+        from ..template_engine import generate_task_sheets_docx
+
+        if student_id is not None:
+            students = [s for s in students if s["id"] == student_id]
+            if not students:
+                raise ValidationError("该学生不在本任务中")
+        if not students:
+            raise ValidationError("该任务未分配学生，无法生成答题卡")
+        out = _tempfile.NamedTemporaryFile(suffix=".docx", delete=False)
+        out_path = out.name
+        out.close()
+        generate_task_sheets_docx(task_dict, paper_dict, students, questions, out_path)
+        logger.info("exam_task_answer_sheets_docx", extra={"task": task_id, "students": len(students)})
+        return _download_response(out_path, "%s-答题卡(%d生).docx" % (t.name, len(students)))
 
     if student_id is not None:
         stu = next((s for s in students if s["id"] == student_id), None)

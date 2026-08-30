@@ -1,8 +1,18 @@
 # 修改清单 — 教研管理平台(AI学习诊断系统)
 
-> 版本: v2.0.8 | 日期: 2026-08-30
+> 版本: v2.0.9 | 日期: 2026-08-30
 
 ---
+
+## v2.0.9 — 每生二维码答题卡 Word(用户需求直出) (2026-08-30)
+
+- **新功能**: `GET /exam-tasks/{id}/answer-sheets/print?format=docx` 返回**每生一页的 Word 答题卡**,页顶机读带含**真实个人二维码图片**(qrcode 库),payload = `JY|tk=任务号|pp=试卷号|cl=班级号|st=学生号|pg=1/1`;支持 student_id 单生补打
+- template_engine 新增 `generate_task_sheets_docx`/`build_sheet_qr_payload`;HTML 打印通道 payload 同构(加 cl=班级号);_task_students 补 classCode
+- 前端任务详情页新增「⬇ 答题卡Word(每生二维码)」按钮
+- **L017/P2 修复**: 任务详情逐题正确率图 backgroundColor 三元短路缺失,parsed undefined 时读 .y 崩溃——加类型守卫
+- 视觉验证: zxing 实测解码两张 QR(任务/试卷/班级/学生四号逐生对应),主Agent读图确认图案清晰互异;HTML 通道 payload 同构 ✓;单生补打 1 页 1 码 ✓
+- 说明: 每生 Word 采用系统默认版式;「用户自定义模板与每生 QR 占位合并」列入下一迭代
+- 验证数据保留: TEST-QR班(15)/生19,20(A01,A02)/卷29/任务24 供用户自行下载验证
 
 ## v2.0.8 — LOOP R6-R7 收敛版 (2026-08-30)
 
