@@ -528,3 +528,76 @@ def generate_task_sheets_docx(task: dict, paper: dict, students: list, questions
 
     doc.save(out_path)
     return out_path
+
+
+def generate_merged_sheets_zip(task: dict, paper: dict, students: list, template_path: str, out_zip: str) -> str:
+    """用户自定义模板(source=user) × 每生二维码合并：每生一份 docx 打包为 zip。
+
+    注入规则（对页眉/正文/表格全部段落生效，幂等）：
+      - 含 [QR:...] 占位的段落 → 剥离占位文本并在段末追加该生二维码图片
+      - '任务：_+' → 任务号+名称；'学生：_+' → 学生号+姓名（班级）
+    未含占位的模板仅做任务/学生信息回填（二维码追加到最后一个非空段落）。
+    """
+    import shutil
+    import zipfile
+
+    tk, tname = _coerce((task or {}).get("code")), _coerce((task or {}).get("name"))
+    pp = _coerce((paper or {}).get("code") or (paper or {}).get("name"))
+    tmp_dir = os.path.join(os.path.dirname(out_zip) or ".", "_merged_sheets")
+    os.makedirs(tmp_dir, exist_ok=True)
+    files = []
+    for idx, stu in enumerate(students, 1):
+        code = _coerce((stu or {}).get("code")) or ("S%02d" % idx)
+        sname = _coerce((stu or {}).get("name"))
+        cls = _coerce((stu or {}).get("classCode"))
+        payload = build_sheet_qr_payload(task, paper, stu or {})
+        stream = _qr_png_stream(payload)
+
+        doc = Document(template_path)
+
+        def _walk(paragraphs):
+            injected = False
+            for para in paragraphs:
+                full = "".join(r.text for r in para.runs)
+                if not full.strip():
+                    continue
+                new = re.sub(r"\[QR:[^\]]*\]", "", full)
+                new = re.sub(r"任务：_+", "任务：%s %s" % (tk, tname), new)
+                new = re.sub(r"学生：_+", "学生：%s %s（%s）" % (code, sname, cls), new)
+                had_qr = "[QR:" in full
+                if new == full and not had_qr:
+                    continue
+                for r in para.runs:
+                    r.text = ""
+                anchor = para.runs[0] if para.runs else para.add_run("")
+                anchor.text = new
+                if had_qr and stream is not None:
+                    stream.seek(0)
+                    para.add_run().add_picture(stream, width=Inches(1.0))
+                    injected = True
+            return injected
+
+        _walk(doc.sections[0].header.paragraphs)
+        injected_body = _walk(doc.paragraphs)
+        for tbl in doc.tables:
+            for row in tbl.rows:
+                for cell in row.cells:
+                    if _walk(cell.paragraphs):
+                        injected_body = True
+        if not injected_body and stream is not None:
+            # 模板未含 QR 占位：在正文末尾追加机读带段落（信息+二维码）
+            stream.seek(0)
+            tail = doc.add_paragraph()
+            tr = tail.add_run("任务：%s %s  试卷：%s  学生：%s %s  " % (tk, tname, pp, code, sname))
+            _set_run_font(tr, 9, False)
+            tail.add_run().add_picture(stream, width=Inches(1.0))
+
+        fpath = os.path.join(tmp_dir, "%s-答题卡-%s.docx" % (tk or "TASK", code))
+        doc.save(fpath)
+        files.append((fpath, "%s-答题卡-%s-%s.docx" % (tk or "TASK", code, sname)))
+
+    with zipfile.ZipFile(out_zip, "w", zipfile.ZIP_DEFLATED) as z:
+        for fpath, arcname in files:
+            z.write(fpath, arcname)
+    shutil.rmtree(tmp_dir, ignore_errors=True)
+    return out_zip

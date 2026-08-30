@@ -4754,6 +4754,19 @@ function printTaskAnswerSheets(taskId) {
 // 答题卡：补打某学生（QR 只含该生）
 function printTaskAnswerSheetForStudent(taskId, studentId) {
   if (!studentId) { showToast('该学生无有效 ID，无法补打', 'warning'); return; }
+  async function downloadTaskSheetsWord(taskId) {
+    try {
+      const r = await fetch(_apiBase() + '/exam-tasks/' + encodeURIComponent(taskId) + '/answer-sheets/print?format=docx', { headers: { Authorization: 'Bearer ' + (localStorage.getItem('wb_api_token') || '') } });
+      if (!r.ok) { showToast('下载失败: HTTP ' + r.status, 'error'); return; }
+      const blob = await r.blob();
+      const ext = (blob.type || '').includes('zip') ? 'zip' : 'docx';
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'task_' + taskId + '_每生答题卡.' + ext;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+    } catch (e) { showToast('下载失败', 'error'); }
+  }
   openRemotePrint(_apiBase() + '/exam-tasks/' + encodeURIComponent(taskId) + '/answer-sheets/print?student_id=' + encodeURIComponent(studentId), '答题卡（补打）');
 }
 // 下载区下拉选择学生后补打
@@ -5212,7 +5225,7 @@ function renderTaskDetail(params) {
         ${hasPerm('exam','delete') ? `<button class="btn btn-danger" onclick="deleteTask('${task.id}')">删除</button>` : ''}
         <button class="btn" onclick="downloadTaskPaperTemplate('${task.id}')">📄 下载试卷模板</button>
         <button class="btn btn-primary" onclick="printTaskAnswerSheets('${task.id}')">📄 答题卡·全部下载</button>
-        <button class="btn" onclick="downloadBlob(_apiBase() + '/exam-tasks/' + encodeURIComponent(task.id) + '/answer-sheets/print?format=docx', 'task_' + task.id + '_答题卡每生.docx')">⬇ 答题卡Word(每生二维码)</button>
+        <button class="btn" onclick="downloadTaskSheetsWord('${task.id}')">⬇ 答题卡Word(每生二维码)</button>
         <button class="btn btn-success" onclick="aiScoreTask('${task.id}')">🤖 AI评分</button>
       </div>
     </div>

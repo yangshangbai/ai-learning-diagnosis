@@ -40,6 +40,25 @@ def _ensure_user_permissions_column(db):
         db.rollback()
 
 
+def _ensure_paper_question_columns(db):
+    """快照题型列（BUG-L015）：paper_questions 补 ques_type 并从题目回填存量（幂等，PG/SQLite 均适用）。"""
+    try:
+        insp = inspect(db.bind)
+        if not insp.has_table("paper_questions"):
+            return
+        existing = {c["name"] for c in insp.get_columns("paper_questions")}
+        if "ques_type" in existing:
+            return
+        db.execute(text("ALTER TABLE paper_questions ADD COLUMN ques_type VARCHAR(32)"))
+        db.execute(text(
+            "UPDATE paper_questions pq SET ques_type = q.ques_type "
+            "FROM questions q WHERE pq.question_id = q.id"
+        ))
+        db.commit()
+    except Exception:
+        db.rollback()
+
+
 def _migrate_default_permissions(db):
     """权限模型升级：给所有「非管理员且 permissions 为 NULL」的用户写入默认模块权限（幂等）。
 
@@ -166,6 +185,7 @@ def ensure_schema_migrations():
     try:
         _ensure_question_columns(db)
         _ensure_user_permissions_column(db)
+        _ensure_paper_question_columns(db)
         _migrate_default_permissions(db)
         _seed_default_tags(db)
         _repair_question_subjects(db)

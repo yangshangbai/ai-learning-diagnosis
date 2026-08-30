@@ -156,7 +156,7 @@ def _persist_recognized_answers(db: Session, sheet: models.AnswerSheet, answers)
             if pq.question_id
             else None
         )
-        qtype = q.ques_type if q else "essay"
+        qtype = pq.ques_type or (q.ques_type if q else "essay")
         ans = amap.get(pq.sort_order, "")
         correct = pq.answer_key if pq.answer_key is not None else (q.answer if q else None)
         max_score = pq.score or 0
@@ -470,7 +470,7 @@ def score_answer_sheet(sheet_id: int, principal: Principal = Depends(require_per
                 if pq.question_id
                 else None
             )
-            qtype_cache[qs.paper_question_id] = q.ques_type if q else "essay"
+            qtype_cache[qs.paper_question_id] = pq.ques_type or (q.ques_type if q else "essay")
         if qtype_cache[qs.paper_question_id] == "essay":
             continue  # 主观题不动，等教师
         if qs.score_status in ("teacher_modified", "teacher_confirmed") and qs.teacher_score is not None:
@@ -714,7 +714,7 @@ def _task_paper_questions(db: Session, paper_id: int) -> List[dict]:
         )
         out.append(
             {
-                "type": q.ques_type if q else "essay",
+                "type": pq.ques_type or (q.ques_type if q else "essay"),
                 "options": q.options if q else [],
                 "score": pq.score or (q.score if q else 0),
                 "stem": q.stem if q else "",
@@ -810,7 +810,17 @@ def print_answer_sheets(
         import os as _os
         import tempfile as _tempfile
 
-        from ..template_engine import generate_task_sheets_docx
+        from ..template_engine import generate_merged_sheets_zip, generate_task_sheets_docx
+
+        sheet_tpl = (
+            db.query(models.AnswerSheetTemplate)
+            .filter(
+                models.AnswerSheetTemplate.paper_id == t.paper_id,
+                models.AnswerSheetTemplate.source == "user",
+            )
+            .first()
+        )
+        use_user_tpl = bool(sheet_tpl and sheet_tpl.file_path and _os.path.exists(sheet_tpl.file_path))
 
         if student_id is not None:
             students = [s for s in students if s["id"] == student_id]
@@ -818,6 +828,14 @@ def print_answer_sheets(
                 raise ValidationError("该学生不在本任务中")
         if not students:
             raise ValidationError("该任务未分配学生，无法生成答题卡")
+        if use_user_tpl:
+            out = _tempfile.NamedTemporaryFile(suffix=".zip", delete=False)
+            out_path = out.name
+            out.close()
+            generate_merged_sheets_zip(task_dict, paper_dict, students, sheet_tpl.file_path, out_path)
+            logger.info("exam_task_answer_sheets_merged_zip", extra={"task": task_id, "students": len(students)})
+            return _download_response(out_path, "%s-答题卡每生(%d人).zip" % (t.name, len(students)), media_type="application/zip")
+
         out = _tempfile.NamedTemporaryFile(suffix=".docx", delete=False)
         out_path = out.name
         out.close()

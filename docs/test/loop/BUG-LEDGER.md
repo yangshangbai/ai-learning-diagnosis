@@ -32,3 +32,5 @@
 | BUG-L011 | R5 | BF3 级联 | **P1** | 删教师500(先删users违反teachers_user_id_fkey),账号未注销仍可登录 | 服务器版删除顺序错误 + Teacher/User无relationship致ORM删除乱序 | **FIXED v2.0.7**(教师本体命令式批量删除后再删账号;回归删除200+登录401✓) |
 
 | BUG-L017 | R-QR | BF9 前端图表 | P2 | 任务详情逐题正确率图 backgroundColor 三元无短路,parsed undefined 读 .y 崩溃(Chart.js TypeError 阻塞页面) | 三元 else 分支未判空 | **FIXED v2.0.9**(类型守卫;回归navigate正常✓) |
+
+| (L015) | R-QR后 | BF7/BF8 | ~~P2~~ | 组卷快照未存ques_type,删题后已有考试重判分失型 | PaperQuestion 无题型列 | **FIXED v2.1.0**(加ques_type列+幂等迁移回填+全链取快照;删题后重评分5/5满分0None✓) |

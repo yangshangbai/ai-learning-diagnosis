@@ -38,6 +38,7 @@ class PaperQuestion(Base):
     id = Column(Integer, primary_key=True, index=True)
     paper_id = Column(Integer, ForeignKey("papers.id"), nullable=False, index=True)
     question_id = Column(Integer, ForeignKey("questions.id"), nullable=True, index=True)
+    ques_type = Column(String(32), nullable=True)  # 题型快照（BUG-L015：删题后重判分仍可定型）
     sort_order = Column(Integer, default=0)
     score = Column(Integer, default=0)
     answer_key = Column(Text, nullable=True)

@@ -222,6 +222,7 @@ def create_paper(body: PaperCreate, _: Principal = Depends(require_permission("p
             models.PaperQuestion(
                 paper_id=p.id,
                 question_id=qid,
+                ques_type=q.ques_type,
                 sort_order=i + 1,
                 score=q.score or 0,
                 answer_key=q.answer,
@@ -401,12 +402,12 @@ def _to_tpl_out(row) -> PaperTemplateOut:
     )
 
 
-def _download_response(path: str, filename: str) -> FileResponse:
+def _download_response(path: str, filename: str, media_type: str = "application/vnd.openxmlformats-officedocument.wordprocessingml.document") -> FileResponse:
     """文件下载响应：Content-Disposition 用 filename*=UTF-8'' 编码中文文件名。"""
     safe_name = filename or os.path.basename(path)
     return FileResponse(
         path,
-        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        media_type=media_type,
         headers={"Content-Disposition": "attachment; filename*=UTF-8''" + quote(safe_name, safe="")},
     )
 

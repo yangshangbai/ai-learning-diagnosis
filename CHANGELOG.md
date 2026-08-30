@@ -1,8 +1,15 @@
 # 修改清单 — 教研管理平台(AI学习诊断系统)
 
-> 版本: v2.0.9 | 日期: 2026-08-30
+> 版本: v2.1.0 | 日期: 2026-08-30
 
 ---
+
+## v2.1.0 — 自定义模板×每生QR合并 + L015快照题型 (2026-08-30)
+
+- **新功能(用户自定义模板合并)**: 试卷答题卡模板 source=user 时,`print?format=docx` 返回 **zip(每生一份docx)**:以用户上传模板为底,页眉/正文自动回填 任务号/试卷号/学生号并注入个人二维码图片(payload tk/pp/cl/st);无占位的模板在文末追加机读带。无用户模板时维持系统版式单docx。前端按 content-type 自动命名 zip/docx;`_download_response` 支持 media_type
+- **L015/P2 修复**: `paper_questions` 增加 `ques_type` 快照列(启动幂等迁移+存量回填,seed._ensure_paper_question_columns);组卷写入/判分定型/重评分/打印 全链路优先取快照题型。回归: 删题385后重评分 5/5 满分、0主观None行(旧行为为该行变主观判分丢失) ✓
+- 验证数据: 任务24(QR班/每生Word)保留供用户复验;L015验证数据已清理
+- 附带: zip 下载 Content-Type 修正(application/zip)
 
 ## v2.0.9 — 每生二维码答题卡 Word(用户需求直出) (2026-08-30)
 
