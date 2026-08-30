@@ -1,8 +1,9 @@
 # 项目全局规则 — 教研管理平台(AI学习诊断系统)v2
 
-> 版本: v2.0.1 | 更新: 2026-08-30 | 架构基线: git `main`(Workbuddy 重设计版;tag v2.0.0=闭环修复前快照, v2.0.1=闭环修复)
+> 版本: v2.1.1 | 更新: 2026-08-30 | 架构基线: git `main`(Workbuddy 重设计版;tag v2.0.0=闭环修复前快照,v2.0.8=LOOP收敛,v2.1.0=每生QR+模板合并,**v2.1.1=备份恢复模块**)
 > 逆向分析全套文档: **[docs/reverse/](docs/reverse/README.md)** ← 接手项目先读这个
 > Agent工程持久记忆: **[docs/agent-memory/AGENT-REGISTRY.md](docs/agent-memory/AGENT-REGISTRY.md)** ← 派活前先读这个
+> 备份恢复模块: **系统设置→备份与恢复**(backend/app/routers/backup.py + scripts/restore_helper.sh,QA报告 docs/test/备份恢复QA报告.md;专项Agent CX-BK-*)
 
 ---
 
