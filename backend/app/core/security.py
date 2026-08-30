@@ -65,11 +65,11 @@ def permissions_view_for(user) -> dict:
     """将 User ORM 行转换为前端可用的权限结构。
 
     - admin：返回全模块全动作（前端展示为全选，且不落库）
-    - 非 admin：返回已配置权限；NULL 时兜底默认权限
+    - 非 admin：如实返回已配置权限（{} = 已显式清零，与 require_permission 执行一致，BUG-L008）
     """
     if getattr(user, "role", None) == "admin":
         return all_permissions()
-    return user.permissions or default_teacher_permissions()
+    return user.permissions or {}
 
 
 # ---------------------------------------------------------------------------

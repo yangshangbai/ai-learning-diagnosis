@@ -146,7 +146,8 @@ def update_user(
     if new_role == "admin":
         user.permissions = None
     elif perm_passed:
-        user.permissions = raw_perms or default_teacher_permissions()
+        # 显式传 permissions：空 dict/null = 清零全部模块权限（BUG-L007：空字典曾被 or 兜底吞掉）
+        user.permissions = raw_perms if raw_perms else {}
     elif user.permissions is None:
         user.permissions = default_teacher_permissions()
     for k, v in data.items():

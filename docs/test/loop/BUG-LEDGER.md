@@ -21,3 +21,7 @@
 
 | BUG-L004 | R2 | BF5/题库 | **P1** | 4份docx题码 `MAT-G6-IMP-序号` 按文件内序号生成,跨文件碰撞互相覆盖(导入3文件后总量不变,前文件题被顶掉) | `_gen_code` 无文件级唯一命名空间 | **FIXED v2.0.4**(文件md5前6位注入题码;回归4文件46题id各异✓,同文件重导去重✓) |
 | BUG-L005 | R2 | BF4 检索 | ~~P1~~ | ~~keyword 过滤失效~~ | **撤销**: 后端检索参数为 `q`,用例参数名写错;q=无理数→3条 ✓ | 撤销(用例修正) |
+
+| BUG-L006 | R3 | BF1 权限模型 | **P1** | 查看类端点只挂require_auth未挂模块权限,零权限教师可读全部试卷/学生/班级/看板(15+端点泄露,实证审计发现) | 列表GET端点未挂 require_permission(view) | **FIXED v2.0.5**(9 router 22端点补view权限;零权限探测全403✓,恢复200✓,admin✓) |
+| BUG-L007 | R3 | BF3 用户权限 | P2 | `PUT permissions:{}` 空字典被 `or default` 吞掉,无法清零用户模块权限 | user.py update 的 `raw_perms or default` falsy 兜底 | **FIXED v2.0.5**(空dict=清零;回归✓) |
+| BUG-L008 | R3 | BF1 展示层 | P3 | 零权限时 /auth/me 与 login 兜底展示全量权限,与403执行不一致,误导前端菜单 | auth.py/security.py 的 `or all_permissions()/or default` 展示兜底 | **FIXED v2.0.5**(展示与执行同源;回归✓) |

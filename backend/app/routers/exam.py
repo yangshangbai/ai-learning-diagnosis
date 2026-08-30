@@ -222,7 +222,7 @@ def list_tasks(
     q: Optional[str] = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=1000),
-    principal: Principal = Depends(require_auth),
+    principal: Principal = Depends(require_permission("exam","view")),
     db: Session = Depends(get_db),
 ):
     query = db.query(models.ExamTask)
@@ -246,7 +246,7 @@ def list_tasks(
 
 
 @router.get("/{task_id}", response_model=ExamTaskOut)
-def get_task(task_id: int, principal: Principal = Depends(require_auth), db: Session = Depends(get_db)):
+def get_task(task_id: int, principal: Principal = Depends(require_permission("exam","view")), db: Session = Depends(get_db)):
     t = db.query(models.ExamTask).filter(models.ExamTask.id == task_id).first()
     if not t:
         raise NotFoundError("考试任务", task_id)
@@ -339,7 +339,7 @@ def assign_students(task_id: int, student_ids: List[int], principal: Principal =
 
 
 @router.get("/{task_id}/assignments", response_model=List[TaskAssignmentOut])
-def list_assignments(task_id: int, principal: Principal = Depends(require_auth), db: Session = Depends(get_db)):
+def list_assignments(task_id: int, principal: Principal = Depends(require_permission("exam","view")), db: Session = Depends(get_db)):
     t = db.query(models.ExamTask).filter(models.ExamTask.id == task_id).first()
     if not t:
         raise NotFoundError("考试任务", task_id)
@@ -422,7 +422,7 @@ def _sheet_out(db: Session, r: models.AnswerSheet) -> AnswerSheetOut:
 
 
 @router.get("/{task_id}/answer-sheets", response_model=List[AnswerSheetOut])
-def list_answer_sheets(task_id: int, principal: Principal = Depends(require_auth), db: Session = Depends(get_db)):
+def list_answer_sheets(task_id: int, principal: Principal = Depends(require_permission("exam","view")), db: Session = Depends(get_db)):
     t = db.query(models.ExamTask).filter(models.ExamTask.id == task_id).first()
     if not t:
         raise NotFoundError("考试任务", task_id)
@@ -494,7 +494,7 @@ def score_answer_sheet(sheet_id: int, principal: Principal = Depends(require_per
 
 
 @router.get("/answer-sheets/{sheet_id}/scores", response_model=List[QuestionScoreOut])
-def list_scores(sheet_id: int, principal: Principal = Depends(require_auth), db: Session = Depends(get_db)):
+def list_scores(sheet_id: int, principal: Principal = Depends(require_permission("exam","view")), db: Session = Depends(get_db)):
     sheet = db.query(models.AnswerSheet).filter(models.AnswerSheet.id == sheet_id).first()
     if not sheet:
         raise NotFoundError("答题卡", sheet_id)
@@ -529,7 +529,7 @@ def adjust_score(qid: int, body: QuestionScoreUpdate, principal: Principal = Dep
 
 
 @router.get("/{task_id}/dashboard", response_model=ExamDashboardOut)
-def task_dashboard(task_id: int, principal: Principal = Depends(require_auth), db: Session = Depends(get_db)):
+def task_dashboard(task_id: int, principal: Principal = Depends(require_permission("exam","view")), db: Session = Depends(get_db)):
     t = db.query(models.ExamTask).filter(models.ExamTask.id == task_id).first()
     if not t:
         raise NotFoundError("考试任务", task_id)
@@ -781,7 +781,7 @@ def print_answer_sheets(
     task_id: int,
     student_id: Optional[int] = None,
     format: Optional[str] = Query(None, description="预留：format=pdf（当前统一返回 HTML，前端 window.print 另存 PDF）"),
-    principal: Principal = Depends(require_auth),
+    principal: Principal = Depends(require_permission("exam","view")),
     db: Session = Depends(get_db),
 ):
     """任务答题卡打印：无 student_id 批量全部学生（每生一页）；有 student_id 单人补打。"""
@@ -817,7 +817,7 @@ def print_answer_sheets(
 @router.get("/{task_id}/paper/template")
 def task_paper_template(
     task_id: int,
-    principal: Principal = Depends(require_auth),
+    principal: Principal = Depends(require_permission("exam","view")),
     db: Session = Depends(get_db),
 ):
     """任务试卷 Word 模板下载（继承试卷模板：复用 paper.py 的模板文件，含用户自定义版；

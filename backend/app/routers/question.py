@@ -85,7 +85,7 @@ def list_questions(
     q: Optional[str] = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=1000),
-    principal: Principal = Depends(require_auth),
+    principal: Principal = Depends(require_permission("question","view")),
     db: Session = Depends(get_db),
 ):
     query = db.query(models.Question).filter(models.Question.status != "archived")
@@ -115,7 +115,7 @@ def list_questions(
 
 
 @router.get("/{qid}", response_model=QuestionOut)
-def get_question(qid: int, principal: Principal = Depends(require_auth), db: Session = Depends(get_db)):
+def get_question(qid: int, principal: Principal = Depends(require_permission("question","view")), db: Session = Depends(get_db)):
     q = db.query(models.Question).filter(models.Question.id == qid).first()
     if not q:
         raise NotFoundError("题目", qid)

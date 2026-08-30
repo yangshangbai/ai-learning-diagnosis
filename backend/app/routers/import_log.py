@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from .. import models
 from ..core.db import SessionLocal
 from ..core.logging import logger
-from ..core.security import Principal, require_auth
+from ..core.security import Principal, require_auth, require_permission
 from ..schemas.import_log import ImportLogOut, PaginatedImportLog
 
 router = APIRouter(prefix="/api/v1/import-logs", tags=["import-log"])
@@ -65,7 +65,7 @@ def list_import_logs(
     status: Optional[str] = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=1000),
-    _: Principal = Depends(require_auth),
+    _: Principal = Depends(require_permission("sync","view")),
     db: Session = Depends(get_db),
 ):
     query = db.query(models.ImportLog)

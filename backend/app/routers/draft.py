@@ -32,7 +32,7 @@ class PaperDraftIn(BaseModel):
 
 @router.get("")
 def get_draft(
-    principal: Principal = Depends(require_auth),
+    principal: Principal = Depends(require_permission("paper","view")),
     db: Session = Depends(get_db),
 ):
     row = db.query(models.PaperDraft).filter(models.PaperDraft.user_id == principal.user_id).first()

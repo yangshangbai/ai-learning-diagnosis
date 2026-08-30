@@ -63,10 +63,11 @@ def me(principal: Principal | None = Depends(get_current_user)):
     if principal is None:
         raise AuthError()
     # Principal 已由 get_current_user 回查数据库，permissions 为最新值
+    # 非 admin：如实展示（{}=已清零），与 require_permission 执行一致（BUG-L008）
     perms = (
         all_permissions()
         if principal.role == "admin"
-        else (principal.permissions or all_permissions())
+        else (principal.permissions or {})
     )
     return {
         "user_id": principal.user_id,

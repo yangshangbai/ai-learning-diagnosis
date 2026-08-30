@@ -79,7 +79,7 @@ def list_classes(
     q: Optional[str] = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=1000),
-    principal: Principal = Depends(require_auth),
+    principal: Principal = Depends(require_permission("class","view")),
     db: Session = Depends(get_db),
 ):
     query = db.query(models.Class)
@@ -104,7 +104,7 @@ def list_classes(
 
 
 @router.get("/{class_id}", response_model=ClassOut)
-def get_class(class_id: int, principal: Principal = Depends(require_auth), db: Session = Depends(get_db)):
+def get_class(class_id: int, principal: Principal = Depends(require_permission("class","view")), db: Session = Depends(get_db)):
     c = db.query(models.Class).filter(models.Class.id == class_id).first()
     if not c:
         raise NotFoundError("班级", class_id)
@@ -177,7 +177,7 @@ def delete_class(class_id: int, _: Principal = Depends(require_permission("class
 
 
 @router.get("/{class_id}/dashboard", response_model=ClassDashboard)
-def dashboard(class_id: int, principal: Principal = Depends(require_auth), db: Session = Depends(get_db)):
+def dashboard(class_id: int, principal: Principal = Depends(require_permission("class","view")), db: Session = Depends(get_db)):
     c = db.query(models.Class).filter(models.Class.id == class_id).first()
     if not c:
         raise NotFoundError("班级", class_id)

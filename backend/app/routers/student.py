@@ -67,7 +67,7 @@ def list_students(
     q: Optional[str] = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=1000),
-    principal: Principal = Depends(require_auth),
+    principal: Principal = Depends(require_permission("student","view")),
     db: Session = Depends(get_db),
 ):
     query = db.query(models.Student)
@@ -94,7 +94,7 @@ def list_students(
 
 
 @router.get("/{student_id}", response_model=StudentOut)
-def get_student(student_id: int, principal: Principal = Depends(require_auth), db: Session = Depends(get_db)):
+def get_student(student_id: int, principal: Principal = Depends(require_permission("student","view")), db: Session = Depends(get_db)):
     s = db.query(models.Student).filter(models.Student.id == student_id).first()
     if not s:
         raise NotFoundError("学生", student_id)
@@ -208,7 +208,7 @@ def add_evaluation(student_id: int, body: EvaluationCreate, principal: Principal
 
 
 @router.get("/{student_id}/dashboard", response_model=StudentDashboard)
-def dashboard(student_id: int, principal: Principal = Depends(require_auth), db: Session = Depends(get_db)):
+def dashboard(student_id: int, principal: Principal = Depends(require_permission("student","view")), db: Session = Depends(get_db)):
     s = db.query(models.Student).filter(models.Student.id == student_id).first()
     if not s:
         raise NotFoundError("学生", student_id)

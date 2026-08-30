@@ -501,7 +501,7 @@ def _bank_out(b: models.AiSelectionBank) -> dict:
 def list_selections(
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=100),
-    principal: Principal = Depends(require_auth),
+    principal: Principal = Depends(require_permission("ai_select","view")),
     db: Session = Depends(get_db),
 ):
     q = db.query(models.AiSelectionBank)
@@ -513,7 +513,7 @@ def list_selections(
 
 
 @router.get("/selections/{bank_id}")
-def get_selection(bank_id: int, principal: Principal = Depends(require_auth), db: Session = Depends(get_db)):
+def get_selection(bank_id: int, principal: Principal = Depends(require_permission("ai_select","view")), db: Session = Depends(get_db)):
     b = db.query(models.AiSelectionBank).filter(models.AiSelectionBank.id == bank_id).first()
     if not b:
         raise NotFoundError("AI 选题", bank_id)

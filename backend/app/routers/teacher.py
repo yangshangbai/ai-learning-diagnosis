@@ -59,7 +59,7 @@ def list_teachers(
     q: Optional[str] = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=1000),
-    principal: Principal = Depends(require_auth),
+    principal: Principal = Depends(require_permission("teacher","view")),
     db: Session = Depends(get_db),
 ):
     query = db.query(models.Teacher)
@@ -85,7 +85,7 @@ def list_teachers(
 @router.get("/{teacher_id}", response_model=TeacherOut)
 def get_teacher(
     teacher_id: int,
-    principal: Principal = Depends(require_auth),
+    principal: Principal = Depends(require_permission("teacher","view")),
     db: Session = Depends(get_db),
 ):
     t = db.query(models.Teacher).filter(models.Teacher.id == teacher_id).first()

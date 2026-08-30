@@ -144,7 +144,7 @@ def list_papers(
     q: Optional[str] = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=1000),
-    principal: Principal = Depends(require_auth),
+    principal: Principal = Depends(require_permission("paper","view")),
     db: Session = Depends(get_db),
 ):
     query = db.query(models.Paper).filter(models.Paper.status != "archived")
@@ -166,7 +166,7 @@ def list_papers(
 
 
 @router.get("/{paper_id}", response_model=PaperOut)
-def get_paper(paper_id: int, principal: Principal = Depends(require_auth), db: Session = Depends(get_db)):
+def get_paper(paper_id: int, principal: Principal = Depends(require_permission("paper","view")), db: Session = Depends(get_db)):
     p = db.query(models.Paper).filter(models.Paper.id == paper_id).first()
     if not p:
         raise NotFoundError("试卷", paper_id)
@@ -176,7 +176,7 @@ def get_paper(paper_id: int, principal: Principal = Depends(require_auth), db: S
 @router.get("/{paper_id}/questions", response_model=List[PaperQuestionOut])
 def list_paper_questions(
     paper_id: int,
-    principal: Principal = Depends(require_auth),
+    principal: Principal = Depends(require_permission("paper","view")),
     db: Session = Depends(get_db),
 ):
     """试卷试题快照：返回组卷时写入的 PaperQuestion（含排序/分值/答案/解析），并附带题干。"""
@@ -530,7 +530,7 @@ def _save_upload(file: UploadFile) -> str:
 @router.get("/{paper_id}/template/paper")
 def download_paper_template(
     paper_id: int,
-    _: Principal = Depends(require_auth),
+    _: Principal = Depends(require_permission("paper","view")),
     db: Session = Depends(get_db),
 ):
     p = _get_paper(db, paper_id)
@@ -541,7 +541,7 @@ def download_paper_template(
 @router.get("/{paper_id}/template/sheet")
 def download_sheet_template(
     paper_id: int,
-    _: Principal = Depends(require_auth),
+    _: Principal = Depends(require_permission("paper","view")),
     db: Session = Depends(get_db),
 ):
     p = _get_paper(db, paper_id)
@@ -624,7 +624,7 @@ def upload_sheet_template(
 @router.get("/{paper_id}/template/meta", response_model=TemplateMetaOut)
 def get_template_meta(
     paper_id: int,
-    _: Principal = Depends(require_auth),
+    _: Principal = Depends(require_permission("paper","view")),
     db: Session = Depends(get_db),
 ):
     p = _get_paper(db, paper_id)
