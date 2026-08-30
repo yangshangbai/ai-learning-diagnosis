@@ -47,11 +47,15 @@ GRADE_CODES = {"一年级": "G1", "二年级": "G2", "三年级": "G3", "四年�
                "高二": "G11", "高三": "G12"}
 
 
-def _gen_code(subject, grade, idx):
-    """生成位置编码：学科码-年级码-IMP-序号4位（无知识点信息时用 IMP 占位）。"""
+def _gen_code(subject, grade, idx, src_hash=""):
+    """生成位置编码：学科码-年级码-IMP|文件指纹-序号4位。
+
+    src_hash = 文件内容指纹前6位（import-docx 传入）：不同文件题码不碰撞（BUG-L004），
+    同文件重导指纹相同 → source_id 去重覆盖依然成立（C16）。
+    """
     sc = SUBJECT_CODES.get(subject, "IMP")
     gc = GRADE_CODES.get(grade, "G1")
-    return "%s-%s-IMP-%04d" % (sc, gc, idx)
+    return "%s-%s-%s-%04d" % (sc, gc, src_hash or "IMP", idx)
 
 
 # ---------------------------------------------------------------- 文档块读取
@@ -238,6 +242,15 @@ def _table_to_html(rows):
     return h + "</table>"
 
 
+def _html_keep_img(text):
+    """文本→HTML：先实体还原再转义（恰好一层，修复表格路径的双重转义 BUG-L002），
+    <img> 标签原样保留，换行转段落。"""
+    return "".join(
+        html.escape(html.unescape(part)) if i % 2 == 0 else part
+        for i, part in enumerate(re.split(r"(<img[^>]*>)", text))
+    ).replace("\n", "</p><p>")
+
+
 # ---------------------------------------------------------------- 格式检查
 def check_docx(path, img_dir=".import_imgs"):
     """格式检查，返回报告 dict。"""
@@ -265,27 +278,27 @@ def check_docx(path, img_dir=".import_imgs"):
 
 # ---------------------------------------------------------------- 导入
 def parse_docx(path, img_dir=".import_imgs", subject="", grade="", difficulty=3,
-               source="docx", category="", src_prefix=""):
+               source="docx", category="", src_prefix="", src_hash=""):
     """docx → 题目列表（系统 JSON 格式）。"""
     _, blocks, _ = _read_doc_blocks(path, img_dir, src_prefix)
     # 优先识别表格模板（表头含 题型+题干）：人手友好的导入模板
     tpl = _parse_table_template(blocks, default_subject=subject, default_grade=grade,
                                 default_difficulty=difficulty, source=source, category=category,
-                                src_prefix=src_prefix)
+                                src_prefix=src_prefix, src_hash=src_hash)
     if tpl is not None:
         return tpl
     questions = _split_questions(blocks, subject, grade)
     result = []
     for i, q in enumerate(questions, 1):
-        stem_html = "<p>" + "</p><p>".join(x for x in q["stem"] if x) + "</p>"
-        answer_html = "<p>" + "</p><p>".join(x.lstrip("【答案】").lstrip("[答案]").strip() for x in q["answer"] if x) + "</p>"
-        analysis_html = "<p>" + "</p><p>".join(x.lstrip("【解析】").lstrip("[解析]").strip() for x in q["analysis"] if x) + "</p>"
+        stem_html = "<p>" + "</p><p>".join(_html_keep_img(x) for x in q["stem"] if x) + "</p>"
+        answer_html = "<p>" + "</p><p>".join(_html_keep_img(x.lstrip("【答案】").lstrip("[答案]").strip()) for x in q["answer"] if x) + "</p>"
+        analysis_html = "<p>" + "</p><p>".join(_html_keep_img(x.lstrip("【解析】").lstrip("[解析]").strip()) for x in q["analysis"] if x) + "</p>"
         stem_text = " ".join(q["stem"])
         opts = re.findall(r"(?:^|[\s\n])([A-D])[\.、．]\s*", stem_text)
         typ = detect_type(stem_text, opts)
         result.append({
             "id": "IMP%03d" % q["num"],
-            "code": _gen_code(subject, grade, i),
+            "code": _gen_code(subject, grade, i, src_hash),
             "subject": subject,
             "grade": grade,
             "type": typ,
@@ -500,7 +513,7 @@ def export_table_template_docx(out_path, title="题库导入模板", empty_rows=
 
 
 def _parse_table_template(blocks, default_subject="", default_grade="", default_difficulty=3,
-                          source="docx", category="", src_prefix=""):
+                          source="docx", category="", src_prefix="", src_hash=""):
     """识别表格模板（表头含 题型+题干）→ 逐行解析为系统题目 JSON；不是模板返回 None。"""
     for kind, payload in blocks:
         if kind != "table" or not payload or not payload[0]:
@@ -562,15 +575,10 @@ def _parse_table_template(blocks, default_subject="", default_grade="", default_
             subj = _cell(r, "subject") or default_subject
             grd = _cell(r, "grade") or default_grade
             kp = [k.strip() for k in re.split(r"[|；;，,]", _cell(r, "knowledge")) if k.strip()]
-            # 通用：文本转义、<img> 标签原样保留（题干/答案/解析都可能含图）
-            def _html_keep_img(text):
-                return "".join(
-                    html.escape(part) if i % 2 == 0 else part
-                    for i, part in enumerate(re.split(r"(<img[^>]*>)", text))
-                ).replace("\n", "</p><p>")
+            # 通用：文本转义（恰好一层，见模块级 _html_keep_img）、<img> 标签原样保留
             out.append({
                 "id": "IMP%03d" % num,
-                "code": _gen_code(subj, grd, num),
+                "code": _gen_code(subj, grd, num, src_hash),
                 "subject": subj,
                 "grade": grd,
                 "type": typ,

@@ -9,6 +9,7 @@
 OCR 依赖：Pillow（图片压缩）+ PyMuPDF(fitz) 或 pypdfium2（PDF 逐页转 PNG，二者装其一即可）。
 """
 import base64
+import hashlib
 import html
 import io
 import json
@@ -102,13 +103,15 @@ async def import_docx(
         return JSONResponse({"code": 400, "message": "仅支持 .docx 文件", "data": None}, 400)
     data = await file.read()
     qe = _qe()
+    src_hash = hashlib.md5(data).hexdigest()[:6].upper()
     with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp:
         tmp.write(data)
         tmp_path = tmp.name
     try:
         qs = qe.parse_docx(tmp_path, img_dir=DEMO_IMG_DIR,
                            subject=subject, grade=grade, difficulty=difficulty,
-                           source="docx", category=subject, src_prefix="/images/")
+                           source="docx", category=subject, src_prefix="/images/",
+                           src_hash=src_hash)
         # 图片已在解析时以 <img src="images/xxx.png"> 直接插入题干（docx 内嵌图 → 文件 → 题干内联）
         img_total = sum(1 for q in qs if "<img" in (q.get("stem") or ""))
         return {"code": 0, "message": "ok",
