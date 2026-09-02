@@ -46,6 +46,7 @@ class StudentOut(BaseModel):
     gender: Optional[str] = None
     class_id: int
     class_name: Optional[str] = None
+    class_code: Optional[str] = None  # 班级编码(列表口径统一: 编码+名称,BUG-04)
     birth_date: Optional[date] = None
     parent_name: Optional[str] = None
     parent_phone: Optional[str] = None

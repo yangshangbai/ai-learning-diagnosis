@@ -1,8 +1,23 @@
 # 修改清单 — 教研管理平台(AI学习诊断系统)
 
-> 版本: v2.1.1 | 日期: 2026-08-30
+> 版本: v2.1.2 | 日期: 2026-09-03
 
 ---
+
+## v2.1.2 — 用户实测缺陷修复批(11项) (2026-09-03)
+
+- **L019/P0 创建假保存**: saveStudentCreate/saveTaskCreate 为纯前端假保存(本地造ID+localStorage,从调后端)——新增"成功"刷新即消失。重写为真实 API 提交(服务端返回为准)+loadBackendData 刷新;失败明确报错不更新列表
+- **L020/P0 ID失配串任务**: 12处 `find(t=>t.id===rp.taskId)` 字符串/数字 `===` 失配后回退 `DATA.tasks[0]`(倒序第一条=最新任务)——上传入口串任务、创建任务关联错试卷、详情/编辑/删除全部串行。统一改类型安全查找器 findTaskById/findPaperById/findStudentById/findClassById/findTeacherById
+- **L018/P1 班级人数恒0(服务端)**: 列表 student_count 取自从未写入的 class_statistics 僵尸表。改实时计数(与详情/看板同口径)
+- **L026/P1 token过期不跳登录**: boot /auth/me 401 被静默吞掉,带死token进系统全空。改为清token回登录页
+- **L024/P1 AI识别矛盾提示**: 识别失败仍提示"已提交入库"。状态拆分: 成功入库N张/失败M张分开横幅,全失败显式红色提示不入库
+- **L021/P2 班级口径**: StudentOut 补 class_code,前端统一 fmtClass(编码+名称)
+- **L023/P2 上传accept**: 限制 jpg/jpeg/png + showPhotoPreview 类型校验跳过
+- **L012' /P2 启动水合闸门**: 数据全空不锁闸,允许重试
+- **L025/P3 看板空题型标签**: type_performance type 空时显示"未知"
+- **L022/P3 日期格式**: fmtDT 统一(任务列表/试卷详情)
+- 用户复现场景全部回归: UI建任务入库✓ UI建学生入库(学号A03)✓ 上传入口按行跳转✓ 班级人数实时✓ 口径统一✓ 日期✓ accept✓ 过期token回登录✓
+- 已知遗留: 试卷/教师/班级等其余 CRUD 页面的 mock 接线审计(同 L019 模式)列入下批;BQ-02 恢复自动回滚不变
 
 ## v2.1.1 — 备份与恢复模块(设置模块) (2026-08-30)
 
