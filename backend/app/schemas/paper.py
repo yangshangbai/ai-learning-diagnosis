@@ -34,6 +34,7 @@ class PaperQuestionOut(BaseModel):
     id: int
     paper_id: int
     question_id: Optional[int] = None  # 删题后置 NULL 保留快照（BUG-L010：非可选曾致 500）
+    ques_type: Optional[str] = None  # 快照题型(L015)
     sort_order: int
     score: int
     answer_key: Optional[str] = None

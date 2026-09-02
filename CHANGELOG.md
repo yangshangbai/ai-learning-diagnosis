@@ -1,8 +1,17 @@
 # 修改清单 — 教研管理平台(AI学习诊断系统)
 
-> 版本: v2.1.2 | 日期: 2026-09-03
+> 版本: v2.1.3 | 日期: 2026-09-03
 
 ---
+
+## v2.1.3 — CRUD接线批: 评分链/教师建档/评价/复制任务 (2026-09-03)
+
+- **L029/P0 评分链UI假实现**: modifyQuestionScore/confirmQuestionScore/confirmAllScores 纯本地(不落库);aiRescoreStudent 用 **Math.random() 伪造AI评分**。全部接线: 调分/确认→PATCH question-scores;AI重评分→POST rescore(确定性判分)+重拉评分。浏览器回归: 调分Q1=3(teacher_modified)、确认3题(teacher_confirmed)服务端实查✓
+- **L028/P1 教师建档假保存**: 本地造工号不入库。接线 POST /teachers;表单补 登录账号/密码 字段(后端必填)。回归: 建档+新账号登录200✓
+- **L030/P2 考后评价假保存**: add/考后评价接线 POST /students/{id}/evaluations(评价落 recent_evaluations,刷新持久✓);评价编辑/删除后端无端点,记录为产品限制
+- **L031/P2 复制任务假保存**: confirmCopyTask 接线 POST /exam-tasks(复制入库✓)
+- **L032/P3**: PaperQuestionOut 暴露 ques_type(前端/校验可用)
+- 全部经浏览器端到端验证(真实点击+服务端实查);audit 复核: 写操作函数 mock 清零(除评价编辑/删除产品限制与 localStorage 辅助)
 
 ## v2.1.2 — 用户实测缺陷修复批(11项) (2026-09-03)
 

@@ -5058,40 +5058,26 @@ function copyTask(taskId) {
   `, `<button class="btn" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="confirmCopyTask()">保存副本</button>`);
 }
 
-function confirmCopyTask() {
-  const src = DATA.tasks.find(x => x.id === window._copyTaskId);
+async function confirmCopyTask() {
+  const src = findTaskById(window._copyTaskId);
   if (!src) { showToast('原任务不存在', 'error'); return; }
   const name = ((document.getElementById('copyTaskName') || {}).value || '').trim();
   if (!name) { showToast('请填写任务名称', 'error'); return; }
-  const category = (document.getElementById('copyTaskCategory') || {}).value || src.category;
-  const paperId = (document.getElementById('copyTaskPaper') || {}).value || src.paperId;
-  const paper = DATA.papers.find(p => p.id === paperId) || {};
-  let classIds = Array.from(document.querySelectorAll('.copy-task-class-cb:checked')).map(cb => cb.value);
-  const studentIds = Array.from(document.querySelectorAll('.copy-task-student-cb:checked')).map(cb => cb.value);
-  let studentCount;
-  if (studentIds.length) {
-    studentCount = studentIds.length;
-    const set = new Set(classIds);
-    studentIds.forEach(sid => { const s = DATA.students.find(x => x.id === sid); if (s) set.add(s.classId); });
-    classIds = Array.from(set);
-  } else {
-    studentCount = classIds.reduce((sum, cid) => { const c = DATA.classes.find(x => x.id === cid); return sum + (c ? c.studentCount : 0); }, 0);
+  const paperId = Number((document.getElementById('copyTaskPaper') || {}).value) || Number(src.paperId);
+  if (!paperId) { showToast('原任务未关联试卷', 'error'); return; }
+  const studentIds = Array.from(document.querySelectorAll('.copy-task-student-cb:checked')).map(cb => Number(cb.value));
+  let classIds = Array.from(document.querySelectorAll('.copy-task-class-cb:checked')).map(cb => Number(cb.value));
+  let ids = studentIds.slice();
+  if (!ids.length && classIds.length) {
+    ids = (DATA.students || []).filter(s => classIds.includes(Number(s.classId))).map(s => Number(s.id));
   }
-  if (!classIds.length && !studentIds.length) { showToast('请至少选择一个班级或学生', 'error'); return; }
-  const today = new Date();
-  const ymd = today.getFullYear() + String(today.getMonth() + 1).padStart(2, '0') + String(today.getDate()).padStart(2, '0');
-  const code = 'T' + ymd + '-' + String(DATA.tasks.length + 1).padStart(3, '0');
-  DATA.tasks.push({
-    id: 't' + Date.now(), code: code, name: name,
-    paperId: paper.id || src.paperId, paperName: paper.name || src.paperName,
-    category: category, creator: STATE.userName || src.creator, status: 'pending',
-    studentCount: studentCount, uploadedCount: 0, scoredCount: 0, confirmedCount: 0,
-    avgScore: 0, maxScore: 0, minScore: 0, medianScore: 0, stdDev: 0, passRate: 0, excellentRate: 0,
-    createdAt: ymd, classIds: classIds
-  });
+  if (!ids.length) { showToast('请至少选择一个班级或学生', 'error'); return; }
+  const saved = await apiPost('/exam-tasks', { name: name, paper_id: paperId, student_ids: ids });
+  if (!saved || !saved.id) { showToast('复制失败(服务端未确认)', 'error'); return; }
+  await loadBackendData();
   closeModal();
   STATE.filteredTasks = null;
-  showToast('已复制任务「' + name + '」');
+  showToast('已复制任务「' + name + '」编码 ' + (saved.taskCode || saved.task_code || ''));
   if (STATE.currentRoute === 'exam-task') navigate('exam-task');
 }
 
@@ -5827,47 +5813,64 @@ function renderStudentScore(params) {
 // ---- Per-student scoring actions (P1-D) ----
 function _currentStudentAnswerSheet() {
   const rp = STATE.routeParams || {};
-  const task = DATA.tasks.find(t => t.id === rp.taskId) || DATA.tasks[0];
+  const task = findTaskById(rp.taskId);
   const student = findStudentById(rp.studentId);
   return { task, student, answerSheet: DATA.answerSheets.find(as => as.taskId === task.id && as.studentId === student.id) };
 }
-function confirmQuestionScore(idx) {
+async function confirmQuestionScore(idx) {
   const { answerSheet } = _currentStudentAnswerSheet();
   if (!answerSheet || !answerSheet.questionScores || !answerSheet.questionScores[idx]) { showToast('题目不存在','error'); return; }
   const qs = answerSheet.questionScores[idx];
+  if (!qs.id) { showToast('该题评分未入库(需先上传识别)，无法保存', 'error'); return; }
   const input = document.getElementById('teacherScoreInput-'+idx);
   const val = input ? parseFloat(input.value) : qs.teacherScore;
-  if (!isNaN(val)) qs.teacherScore = Math.max(0, Math.min(qs.maxScore, val));
-  qs.status = 'teacher_confirmed';
+  if (isNaN(val)) { showToast('请填写评分', 'error'); return; }
+  const saved = await apiPatch('/exam-tasks/question-scores/' + qs.id, { teacher_score: Math.max(0, Math.min(qs.maxScore || 100, val)) });
+  if (!saved) { showToast('保存失败(服务端未确认)', 'error'); return; }
+  qs.teacherScore = saved.teacherScore != null ? saved.teacherScore : val;
+  qs.finalScore = saved.finalScore != null ? saved.finalScore : qs.teacherScore;
+  qs.status = saved.scoreStatus || 'teacher_confirmed';
   showToast('评分已保存');
   navigate('exam-task.student-score', STATE.routeParams);
 }
-function modifyQuestionScore(idx) {
+async function modifyQuestionScore(idx) {
   const { answerSheet } = _currentStudentAnswerSheet();
   if (!answerSheet || !answerSheet.questionScores || !answerSheet.questionScores[idx]) { showToast('题目不存在','error'); return; }
   const qs = answerSheet.questionScores[idx];
+  if (!qs.id) { showToast('该题评分未入库(需先上传识别)，无法修改', 'error'); return; }
   const input = document.getElementById('teacherScoreInput-'+idx);
   const val = input ? parseFloat(input.value) : qs.teacherScore;
-  if (!isNaN(val)) qs.teacherScore = Math.max(0, Math.min(qs.maxScore, val));
-  qs.status = 'teacher_modified';
+  if (isNaN(val)) { showToast('请填写评分', 'error'); return; }
+  const saved = await apiPatch('/exam-tasks/question-scores/' + qs.id, { teacher_score: Math.max(0, Math.min(qs.maxScore || 100, val)) });
+  if (!saved) { showToast('修改失败(服务端未确认)', 'error'); return; }
+  qs.teacherScore = saved.teacherScore != null ? saved.teacherScore : val;
+  qs.finalScore = saved.finalScore != null ? saved.finalScore : qs.teacherScore;
+  qs.status = saved.scoreStatus || 'teacher_modified';
   showToast('已修改');
   navigate('exam-task.student-score', STATE.routeParams);
 }
-function confirmAllScores() {
+async function confirmAllScores() {
   const { answerSheet } = _currentStudentAnswerSheet();
   if (!answerSheet || !answerSheet.questionScores) { showToast('无评分数据','error'); return; }
-  let n = 0;
-  answerSheet.questionScores.forEach(qs => { qs.status = 'teacher_confirmed'; n++; });
-  showToast('已确认'+n+'题');
+  let ok = 0, fail = 0, skip = 0;
+  for (const qs of answerSheet.questionScores) {
+    if (!qs.id) { skip++; continue; }
+    if (qs.teacherScore == null && qs.aiScore == null) { skip++; continue; }
+    const val = qs.teacherScore != null ? qs.teacherScore : qs.aiScore;
+    const saved = await apiPatch('/exam-tasks/question-scores/' + qs.id, { teacher_score: val });
+    if (saved) { qs.teacherScore = val; qs.finalScore = val; qs.status = saved.scoreStatus || 'teacher_confirmed'; ok++; }
+    else fail++;
+  }
+  showToast('已确认 ' + ok + ' 题' + (fail ? '，失败 ' + fail + ' 题' : '') + (skip ? '，跳过 ' + skip + ' 题(未评分)' : ''));
   navigate('exam-task.student-score', STATE.routeParams);
 }
-function aiRescoreStudent() {
+async function aiRescoreStudent() {
   const { answerSheet } = _currentStudentAnswerSheet();
-  if (!answerSheet || !answerSheet.questionScores) { showToast('无评分数据','error'); return; }
-  answerSheet.questionScores.forEach(qs => {
-    qs.aiScore = Math.round(Math.random() * qs.maxScore * 10) / 10;
-    qs.aiConfidence = Math.round(Math.random() * 40 + 60) / 100;
-  });
+  if (!answerSheet || !answerSheet.id) { showToast('答题卡未入库，无法重评分', 'error'); return; }
+  const saved = await apiPost('/exam-tasks/answer-sheets/' + answerSheet.id + '/score', {});
+  if (!saved || saved.code !== 0) { showToast('重评分失败', 'error'); return; }
+  const rows = await apiGet('/exam-tasks/answer-sheets/' + answerSheet.id + '/scores');
+  if (rows) answerSheet.questionScores = rows;
   showToast('AI重评分完成');
   navigate('exam-task.student-score', STATE.routeParams);
 }
@@ -6284,24 +6287,21 @@ function addEvaluationModal(sid) {
     </div>
   `, `<button class="btn" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="confirmAddEvaluation('${sid}')">保存</button>`);
 }
-function confirmAddEvaluation(sid) {
-  const s = DATA.students.find(x => x.id === sid);
+async function confirmAddEvaluation(sid) {
+  const s = findStudentById(sid);
   if (!s) return;
-  const task = DATA.tasks.find(t => t.id === (document.getElementById('evalTask') || {}).value) || {};
+  const task = findTaskById((document.getElementById('evalTask') || {}).value) || {};
   const evaluation = ((document.getElementById('evalContent') || {}).value || '').trim();
   if (!evaluation) { showToast('请填写评价内容', 'error'); return; }
-  const rec = {
-    id: 'ev' + Date.now(),
-    taskId: task.id || '', taskCode: task.code || '', taskName: task.name || '',
-    date: (document.getElementById('evalDate') || {}).value || task.createdAt || '',
+  const saved = await apiPost('/students/' + Number(s.id) + '/evaluations', {
+    task_code: task.code || '', task_name: task.name || '',
+    date: (document.getElementById('evalDate') || {}).value || '',
     score: parseFloat((document.getElementById('evalScore') || {}).value) || 0,
-    fullScore: parseFloat((document.getElementById('evalFullScore') || {}).value) || 100,
+    full_score: parseFloat((document.getElementById('evalFullScore') || {}).value) || 100,
     evaluation: evaluation, teacher: STATE.userName || '教师',
-    createdAt: new Date().toLocaleString('zh-CN'),
-  };
-  if (!s.recentEvaluations) s.recentEvaluations = [];
-  s.recentEvaluations.push(rec);
-  saveLocalStudents();
+  });
+  if (!saved || saved.code !== 0) { showToast('评价保存失败(服务端未确认)', 'error'); return; }
+  await loadBackendData();
   closeModal();
   showToast('评价已添加');
   navigate('student.detail', { id: sid });
@@ -6358,9 +6358,9 @@ function confirmDeleteEvaluation(sid, evid) {
 }
 
 // 评分页保存考后评价（自动带任务信息 + 最终成绩，同任务去重更新）
-function savePostExamEvaluation() {
+async function savePostExamEvaluation() {
   const rp = STATE.routeParams || {};
-  const task = DATA.tasks.find(t => t.id === rp.taskId) || DATA.tasks[0];
+  const task = findTaskById(rp.taskId) || {};
   const student = findStudentById(rp.studentId);
   const answerSheet = DATA.answerSheets.find(as => as.taskId === task.id && as.studentId === student.id);
   const evaluation = ((document.getElementById('postExamEval') || {}).value || '').trim();
@@ -6369,7 +6369,14 @@ function savePostExamEvaluation() {
   if (answerSheet && answerSheet.questionScores) {
     finalScore = answerSheet.questionScores.reduce((sum, qs) => sum + (qs.teacherScore != null ? qs.teacherScore : (qs.aiScore || 0)), 0);
   }
-  if (!student.recentEvaluations) student.recentEvaluations = [];
+  const fullPaper = findPaperById(task.paperId);
+  const saved = await apiPost('/students/' + Number(student.id) + '/evaluations', {
+    task_code: task.code || '', task_name: task.name || '',
+    score: finalScore, full_score: (fullPaper && fullPaper.totalScore) || 100,
+    evaluation: evaluation, teacher: STATE.userName || '教师',
+  });
+  if (!saved || saved.code !== 0) { showToast('评价保存失败(服务端未确认)', 'error'); return; }
+  await loadBackendData();
   const existing = student.recentEvaluations.find(e => e.taskId === task.id);
   const rec = {
     id: existing ? existing.id : ('ev' + Date.now()),
@@ -7071,6 +7078,8 @@ function renderTeacherCreate() {
       <div class="form-row"><label>姓名</label><div class="form-input"><input type="text" id="tchName" class="form-input" placeholder="必填"></div></div>
       <div class="form-row"><label>性别</label><div class="form-input"><label style="margin-right:16px;"><input type="radio" name="tgender" value="male" checked> 男</label><label><input type="radio" name="tgender" value="female"> 女</label></div></div>
       <div class="form-row"><label>手机号</label><div class="form-input"><input type="text" id="tchPhone" class="form-input"></div></div>
+      <div class="form-row"><label>登录账号</label><div class="form-input"><input type="text" id="tchUsername" class="form-input" placeholder="教师登录用户名(必填)"></div></div>
+      <div class="form-row"><label>登录密码</label><div class="form-input"><input type="password" id="tchPassword" class="form-input" placeholder="教师登录密码(必填)"></div></div>
       <div class="form-row"><label>任教学科</label><div class="form-input"><div id="tchSubjectsWrap" style="display:flex;flex-direction:column;gap:6px;"><div style="display:flex;gap:4px;"><select class="form-input tch-subject-select">${DATA.subjects.map(s=>`<option>${s.name}</option>`).join('')}</select><button class="btn btn-sm" style="margin-left:4px;" onclick="event.preventDefault();addTeacherSubjectRow()">+ 添加学科</button></div></div></div></div>
       <div class="form-row"><label>备注</label><div class="form-input"><textarea id="tchRemark" class="form-input" rows="2"></textarea></div></div>
       <div style="text-align:right;margin-top:20px;">
@@ -7088,22 +7097,26 @@ function addTeacherSubjectRow() {
   row.innerHTML = `<select class="form-input tch-subject-select">${DATA.subjects.map(s=>`<option>${s.name}</option>`).join('')}</select><button class="btn btn-sm btn-text" style="color:var(--error);" onclick="this.parentElement.remove()">✕</button>`;
   wrap.appendChild(row);
 }
-function saveTeacherCreate() {
-  const name = (document.getElementById('tchName') || {}).value || '';
-  if (!name.trim()) { showToast('请填写姓名', 'error'); return; }
-  const code = (document.getElementById('tchCode') || {}).value || ('T' + String(DATA.teachers.length + 1).padStart(3, '0'));
+async function saveTeacherCreate() {
+  const nameEl = document.getElementById('tchName');
+  const name = (nameEl || {}).value || '';
+  if (!name.trim()) { showToast('请填写姓名', 'error'); if (nameEl) { nameEl.style.borderColor = 'var(--error)'; nameEl.focus(); } return; }
   const gender = (document.querySelector('input[name="tgender"]:checked') || {}).value || 'male';
   const phone = (document.getElementById('tchPhone') || {}).value || '';
+  const username = (document.getElementById('tchUsername') || {}).value || '';
+  const password = (document.getElementById('tchPassword') || {}).value || '';
+  if (!username.trim()) { showToast('请填写登录账号(教师将用它登录系统)', 'error'); return; }
+  if (!password.trim()) { showToast('请填写登录密码', 'error'); return; }
   const subjects = Array.from(document.querySelectorAll('.tch-subject-select')).map(s => s.value).filter(Boolean);
-  const newId = 't' + Date.now();
-  const teacher = {
-    id: newId, code: code, name: name.trim(), gender: gender, phone: phone,
-    subjects: subjects.length ? subjects : ['数学'], status: 'active',
-    classes: [], paperCount: 0, taskCount: 0
-  };
-  DATA.teachers.push(teacher);
+  const saved = await apiPost('/teachers', {
+    name: name.trim(), gender: gender, phone: phone,
+    username: username.trim(), password: password,
+    subject_ids: subjects.map(Number).filter(n => !isNaN(n)),
+  });
+  if (!saved || !saved.id) { showToast('创建失败(服务端未确认)，登录账号可能已存在', 'error'); return; }
+  await loadBackendData();
   STATE.filteredTeachers = null;
-  showToast('教师创建成功！工号 ' + code);
+  showToast('教师创建成功！工号 ' + (saved.teacherCode || saved.teacher_code || ''));
   navigate('teacher');
 }
 

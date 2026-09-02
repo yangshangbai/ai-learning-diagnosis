@@ -54,3 +54,9 @@
 | L025 | 用户实测 | BF9 看板 | P3 | 看板题型出现空对象(快照题型NULL) | 旧卷无ques_type | 缓解 v2.1.2(标签"未知";v2.1.0快照列后新卷无此问题) |
 | L022 | 用户实测 | 展示 | P3 | 创建时间显示原始ISO格式 | 前端未格式化 | **FIXED v2.1.2**(fmtDT;任务列表/试卷详情) |
 | L012b | R-QR | 启动 | P3 | afterRender 水合失败后一次性闸门锁死,首屏空不再重试 | 闸门先置位后取数 | **FIXED v2.1.2**(全空不锁闸) |
+
+| L028 | 接线批 | BF3 教师 | P1 | 教师建档假保存(本地造工号,不入库;后端需username/password表单缺失) | CRUD mock 遗留 | **FIXED v2.1.3**(POST /teachers+表单补账号字段;建档+登录200✓) |
+| L029 | 接线批 | BF8 评分链 | **P0** | 调分/确认/批量确认纯本地不落库;AI重评分用Math.random伪造 | CRUD mock 遗留 | **FIXED v2.1.3**(PATCH/POST接线;调分Q1=3+确认3题服务端实查✓) |
+| L030 | 接线批 | BF3 评价 | P2 | 考后评价/添加评价假保存 | CRUD mock 遗留 | **FIXED v2.1.3**(POST evaluations落库✓);评价编辑/删除后端无端点=产品限制 |
+| L031 | 接线批 | BF8 复制任务 | P2 | 复制任务假保存 | CRUD mock 遗留 | **FIXED v2.1.3**(POST /exam-tasks;复制入库✓) |
+| L032 | 接线批 | 接口规范 | P3 | PaperQuestionOut 未暴露 ques_type | schema 缺字段 | **FIXED v2.1.3**(补字段) |
