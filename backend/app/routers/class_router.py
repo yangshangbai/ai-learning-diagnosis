@@ -68,9 +68,13 @@ def generate_class_code(db: Session, stage: str) -> str:
 
 
 def _to_out(db: Session, c: models.Class) -> ClassOut:
-    stat = db.query(models.ClassStatistic).filter(models.ClassStatistic.class_id == c.id).first()
     out = ClassOut.model_validate(c)
-    out.student_count = stat.student_count if stat else 0
+    # 实时计数（与详情/看板同口径；class_statistics 为从未写入的僵尸表，不可用——BUG-L018）
+    out.student_count = (
+        db.query(models.Student)
+        .filter(models.Student.class_id == c.id)
+        .count()
+    )
     return out
 
 

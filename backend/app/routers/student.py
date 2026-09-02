@@ -58,6 +58,7 @@ def _to_out(db: Session, s: models.Student) -> StudentOut:
     if s.class_id:
         c = db.query(models.Class).filter(models.Class.id == s.class_id).first()
         out.class_name = c.name if c else None
+        out.class_code = c.class_code if c else None
     return out
 
 

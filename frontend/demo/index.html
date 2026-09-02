@@ -942,6 +942,13 @@ function renderPager({ total, page, pageSize, onChange, pageSizes }) {
   `;
 }
 
+function findTaskById(id){ const s=String(id); return (DATA.tasks||[]).find(t=>String(t.id)===s); }
+function findPaperById(id){ const s=String(id); return (DATA.papers||[]).find(p=>String(p.id)===s); }
+function findStudentById(id){ const s=String(id); return (DATA.students||[]).find(x=>String(x.id)===s); }
+function findClassById(id){ const s=String(id); return (DATA.classes||[]).find(x=>String(x.id)===s); }
+function findTeacherById(id){ const s=String(id); return (DATA.teachers||[]).find(x=>String(x.id)===s); }
+function fmtClass(s){ if(!s) return '--'; return ((s.classCode||s.class_code||'')+' '+(s.className||'')).trim() || '--'; }
+function fmtDT(v){ if(!v) return '--'; return String(v).replace('T',' ').slice(0,19); }
 const ROUTES = {
   'dashboard': { title:'工作台', render: renderDashboard, afterRender: afterRenderDashboard, menu:'工作台' },
   'question-bank': { title:'题目列表', render: renderQuestionBank, menu:'题库管理' },
@@ -1405,7 +1412,6 @@ window.loadBackendData = window.loadBackendData || async function loadBackendDat
 let _dashHydrated = false;
 async function afterRenderDashboard() {
   if (_dashHydrated) return;
-  _dashHydrated = true;
   try {
     const [q,p,t,s,c,te] = await Promise.all([
       apiGet('/questions?page_size=500'), apiGet('/papers?page_size=500'),
@@ -1413,14 +1419,16 @@ async function afterRenderDashboard() {
       apiGet('/classes?page_size=500'), apiGet('/teachers?page_size=500'),
     ]);
     const pick = (r) => (r && (r.items || (r.data && r.data.items))) || [];
+    if (!pick(q).length && !pick(t).length) return;  // 全空疑似失败(网络/401),不锁闸,下次进入重试
     if (q) DATA.questions = pick(q);
     if (p) DATA.papers = pick(p);
     if (t) DATA.tasks = pick(t);
     if (s) DATA.students = pick(s);
     if (c) DATA.classes = pick(c);
     if (te) DATA.teachers = pick(te);
+    _dashHydrated = true;
     if (STATE.currentRoute === 'dashboard') navigate('dashboard');
-  } catch (e) { /* 网络失败保持首屏，由各列表页自行装载 */ }
+  } catch (e) { /* 失败不锁闸,下次进入重试 */ }
 }
 
 function renderDashboard() {
@@ -2511,10 +2519,8 @@ function saveLocalStudents() {
 }
 function restoreLocalStudents() {
   try {
-    const saved = localStorage.getItem('students');
-    if (!saved) return;
-    const list = JSON.parse(saved);
-    if (!Array.isArray(list)) return;
+    // BUG修复：学生数据以后端为唯一事实源，本地暂存不再回灌（历史假数据会污染列表与班级人数）
+    return;
     const byId = {};
     DATA.students.forEach(s => { if (s && s.id) byId[s.id] = s; });
     list.forEach(s => { if (s && s.id) byId[s.id] = s; });   // 覆盖/追加，保留未改动的 seed 学生
@@ -4276,7 +4282,7 @@ function renderPaperDetail(params) {
         <tr><td style="color:var(--text-sub);width:100px;">试卷编号</td><td style="font-family:monospace;">${paper.code}</td><td style="color:var(--text-sub);width:100px;">分类</td><td>${paper.category}</td></tr>
         <tr><td style="color:var(--text-sub);">学科</td><td>${paper.subject}</td><td style="color:var(--text-sub);">年级</td><td>${paper.grade}</td></tr>
         <tr><td style="color:var(--text-sub);">题数</td><td>${paper.questionCount}题</td><td style="color:var(--text-sub);">总分</td><td>${paper.totalScore}分</td></tr>
-        <tr><td style="color:var(--text-sub);">创建时间</td><td>${paper.createdAt}</td><td style="color:var(--text-sub);">状态</td><td>${getPaperStatusBadge(paper.status)}</td></tr>
+        <tr><td style="color:var(--text-sub);">创建时间</td><td>${fmtDT(paper.createdAt)}</td><td style="color:var(--text-sub);">状态</td><td>${getPaperStatusBadge(paper.status)}</td></tr>
       </table>
     </div>
     <div class="card">
@@ -4368,7 +4374,7 @@ function renderAnswerSheetPreviewHtml(paper, task, student) {
   html += '<div class="ah-info">';
   if (task) html += `<span><b>任务：</b>${task.code || ''} ${task.name || ''}</span>`;
   html += `<span><b>试卷：</b>${paper.code || paper.name || ''}</span>`;
-  if (student) html += `<span><b>学生：</b>${student.code || ''} ${student.name || ''}（${student.className || ''}）</span>`;
+  if (student) html += `<span><b>学生：</b>${student.code || ''} ${student.name || ''}（${fmtClass(student)}）</span>`;
   html += '</div>';
   html += `<div class="ah-qr">${qrDataUrl ? `<img src="${qrDataUrl}" alt="QR">` : '<div class="qr-placeholder">QR</div>'}<div class="qr-caption">扫码识别</div></div>`;
   html += '</div>';
@@ -4873,7 +4879,7 @@ function _renderTaskListBody() {
                 <td>${t.studentCount}</td>
                 <td class="table-mobile-hide">${t.avgScore || '--'}</td>
                 <td>${getTaskStatusBadge(t.status)}</td>
-                <td class="table-mobile-hide" style="font-size:12px;">${t.createdAt}</td>
+                <td class="table-mobile-hide" style="font-size:12px;">${fmtDT(t.createdAt)}</td>
                 <td><button class="btn btn-sm btn-text" onclick="navigate('exam-task.detail',{id:'${t.id}'})">详情</button><button class="btn btn-sm btn-text" onclick="navigate('exam-task.upload',{taskId:'${t.id}'})">📷 上传</button><button class="btn btn-sm btn-text" onclick="copyTask('${t.id}')">复制</button>${hasPerm('exam','delete') ? `<button class="btn btn-sm btn-text" style="color:var(--error);" onclick="deleteTask('${t.id}')">删除</button>` : ''}</td>
               </tr>
               `;
@@ -4932,7 +4938,7 @@ function taskListPageChange(newPage, newPageSize) {
    PAGE: TASK CREATE
    ================================================================ */
 function renderTaskCreate(params) {
-  const selectedPaper = params.paperId ? DATA.papers.find(p => p.id === params.paperId) : null;
+  const selectedPaper = params.paperId ? findPaperById(params.paperId) : null;
   const today = new Date();
   const ymd = today.getFullYear() + String(today.getMonth()+1).padStart(2,'0') + String(today.getDate()).padStart(2,'0');
   const nextSeq = String(DATA.tasks.length + 1).padStart(3, '0');
@@ -5089,49 +5095,36 @@ function confirmCopyTask() {
   if (STATE.currentRoute === 'exam-task') navigate('exam-task');
 }
 
-function saveTaskCreate(defaultCode) {
+async function saveTaskCreate(defaultCode) {
   const name = (document.getElementById('taskName') || {}).value || '';
   if (!name.trim()) { showToast('请填写任务名称', 'error'); return; }
-  const category = (document.getElementById('taskCategory') || {}).value || (DATA.taskCategories[0] && DATA.taskCategories[0].name) || '';
-  const paperId = (document.getElementById('taskPaper') || {}).value;
-  const paper = DATA.papers.find(p => p.id === paperId) || DATA.papers[0];
+  const categoryName = (document.getElementById('taskCategory') || {}).value || (DATA.taskCategories[0] && DATA.taskCategories[0].name) || '';
+  const cat = (DATA.taskCategories || []).find(c => c.name === categoryName);
+  const paper = findPaperById((document.getElementById('taskPaper') || {}).value);
   if (!paper) { showToast('请选择试卷', 'error'); return; }
   const assignMode = (document.querySelector('input[name="assignMode"]:checked') || {}).value || 'class';
   let classIds = [];
+  let studentIds = [];
   let studentCount = 0;
   if (assignMode === 'class') {
-    classIds = Array.from(document.querySelectorAll('.task-class-cb:checked')).map(cb => cb.value);
+    classIds = Array.from(document.querySelectorAll('.task-class-cb:checked')).map(cb => Number(cb.value));
     if (classIds.length === 0) { showToast('请至少选择一个班级', 'error'); return; }
-    studentCount = classIds.reduce((sum, cid) => {
-      const c = DATA.classes.find(x => x.id === cid);
-      return sum + (c ? c.studentCount : 0);
-    }, 0);
+    studentCount = (DATA.students || []).filter(s => classIds.includes(Number(s.classId))).length;
   } else {
-    const studentIds = Array.from(document.querySelectorAll('.task-student-cb:checked')).map(cb => cb.value);
+    studentIds = Array.from(document.querySelectorAll('.task-student-cb:checked')).map(cb => Number(cb.value));
     if (studentIds.length === 0) { showToast('请至少选择一名学生', 'error'); return; }
     studentCount = studentIds.length;
-    // infer classIds from selected students
-    const set = new Set();
-    studentIds.forEach(sid => {
-      const s = DATA.students.find(x => x.id === sid);
-      if (s) set.add(s.classId);
-    });
-    classIds = Array.from(set);
   }
-  const today = new Date();
-  const ymd = today.getFullYear() + '-' + String(today.getMonth()+1).padStart(2,'0') + '-' + String(today.getDate()).padStart(2,'0');
-  const newId = 't' + Date.now();
-  const task = {
-    id: newId, code: defaultCode, name: name.trim(),
-    paperId: paper.id, paperName: paper.name,
-    category: category, creator: STATE.userName || '管理员', status: 'pending',
-    studentCount: studentCount, uploadedCount: 0, scoredCount: 0, confirmedCount: 0,
-    avgScore: 0, maxScore: 0, minScore: 0, medianScore: 0, stdDev: 0, passRate: 0, excellentRate: 0,
-    createdAt: ymd, classIds: classIds
+  const payload = {
+    name: name.trim(), paper_id: Number(paper.id),
+    category_id: cat ? Number(cat.id) : null,
+    student_ids: studentIds || [],
   };
-  DATA.tasks.push(task);
+  const saved = await apiPost('/exam-tasks', payload);
+  if (!saved || !saved.id) { showToast('创建失败：服务端未确认写入，请检查网络后重试', 'error'); return; }
+  await loadBackendData();   // 以后端为准刷新任务与统计
   STATE.filteredTasks = null;
-  showToast('任务创建成功！编码 ' + defaultCode);
+  showToast('任务创建成功！编码 ' + (saved.taskCode || saved.task_code || ''));
   navigate('exam-task');
 }
 
@@ -5392,7 +5385,7 @@ function renderTaskDetail(params) {
             }).join('')}
             ${unuploaded.map(s => `
               <tr>
-                <td>${s.code}</td><td>${s.name}</td><td>${s.className || '--'}</td>
+                <td>${s.code}</td><td>${s.name}</td><td>${fmtClass(s)}</td>
                 <td><span class="badge badge-error">❌未上传</span></td><td>--</td><td>--</td>
                 <td><button class="btn btn-sm btn-text" onclick="navigate('exam-task.upload',{taskId:'${task.id}'})">上传</button> <button class="btn btn-sm" onclick="printTaskAnswerSheetForStudent('${task.id}','${s.id}')">⬇ 补打</button></td>
               </tr>
@@ -5534,7 +5527,7 @@ function _gradeQuestion(q, studentAnswer) {
 
 function renderUpload(params) {
   const mobile = isMobile();
-  const task = DATA.tasks.find(t => t.id === params.taskId) || DATA.tasks[0];
+  const task = findTaskById(params.taskId);
   const paper = DATA.papers.find(p => p.id === task.paperId) || {};
   const students = DATA.students.filter(s => (task.classIds || []).includes(s.classId));
   const uploadedSet = new Set((DATA.answerSheets || []).filter(as => as.taskId === task.id).map(as => as.studentId));
@@ -5554,14 +5547,14 @@ function renderUpload(params) {
           <div class="text">点击拍照上传答题卡</div>
           <div class="hint">将调用后置相机拍照，拍完自动识别入库</div>
         </div>
-        <input type="file" id="cameraInput" style="display:none;" accept="image/*" capture="environment" multiple onchange="showPhotoPreview(this)">
+        <input type="file" id="cameraInput" style="display:none;" accept="image/jpeg,image/png,.jpg,.jpeg,.png" capture="environment" multiple onchange="showPhotoPreview(this)">
       ` : `
         <div class="upload-area" onclick="document.getElementById('fileInput').click()">
           <div class="icon">📁</div>
           <div class="text">点击选择答题卡照片（可多张，每张对应一名学生）</div>
           <div class="hint">支持 JPG/PNG 格式，可多张上传</div>
         </div>
-        <input type="file" id="fileInput" style="display:none;" accept="image/*" multiple onchange="showPhotoPreview(this)">
+        <input type="file" id="fileInput" style="display:none;" accept="image/jpeg,image/png,.jpg,.jpeg,.png" multiple onchange="showPhotoPreview(this)">
       `}
       <div id="photoPreviewArea"></div>
       <div id="uploadActionArea" style="display:none;margin-top:16px;text-align:center;">
@@ -5594,7 +5587,11 @@ function renderUpload(params) {
 }
 
 function showPhotoPreview(input) {
-  const files = input.files;
+  const all = Array.from(input.files || []);
+  const bad = all.filter(f => !/^image\/(jpeg|png)$/.test(f.type) && !/\.(jpe?g|png)$/i.test(f.name));
+  const files = all.filter(f => !bad.includes(f));
+  if (bad.length) showToast('仅支持 JPG/JPEG/PNG 格式，已跳过 ' + bad.length + ' 个文件', 'error');
+  if (!files.length) { input.value = ''; return; }
   window._uploadedImageCount = files.length;  // 记录上传图片数（每张对应一名学生）
   window._uploadFiles = [];  // 保存每张图的 dataURL，供 AI 识别传给后端
   const area = document.getElementById('photoPreviewArea');
@@ -5626,8 +5623,9 @@ async function startAIRecognition() {
   const content = document.getElementById('aiProgressContent');
   card.style.display = 'block';
   const rp = STATE.routeParams || {};
-  const task = DATA.tasks.find(t => t.id === rp.taskId) || DATA.tasks[0];
-  const paper = DATA.papers.find(p => p.id === task.paperId) || {};
+  const task = findTaskById(rp.taskId);
+  if (!task) { return '<div class="page"><h2>任务不存在或已删除</h2><button class="btn" onclick="navigate(&quot;exam-task&quot;)">← 返回任务列表</button></div>'; }
+  const paper = findPaperById(task.paperId) || {};
   const students = DATA.students.filter(s => (task.classIds || []).includes(s.classId));
   const images = window._uploadFiles || [];
   if (!images.length) { showToast('请先选择答题卡照片', 'error'); return; }
@@ -5693,17 +5691,20 @@ async function startAIRecognition() {
   task.uploadedCount = (DATA.answerSheets || []).filter(as => as.taskId === task.id).length;
   if (['draft', 'pending'].includes(task.status)) task.status = 'in_exam';
 
+  const okRows = results.filter(r => !r.error);
   const rows = results.map((r, i) => {
     if (r.error) return `<div style="padding:6px 0;border-bottom:1px solid var(--border-light);font-size:13px;color:var(--error);">❌ 第 ${i + 1} 张：${r.error}</div>`;
     const nm = r.student ? `<b>${r.student.code} ${r.student.name}</b>（${r.student.className}）` : `<b>${r.recCode || '未匹配'}</b>`;
     return `<div style="padding:6px 0;border-bottom:1px solid var(--border-light);font-size:13px;">✅ ${nm}：识别 ${r.n} 题，答案已入库并完成客观题判分</div>`;
   }).join('');
-  content.innerHTML = `
-    <div style="margin-bottom:8px;font-size:14px;">🤖 AI 识别完成（真实视觉模型识别）</div>
-    ${rows}
-    <div style="margin-top:10px;font-size:13px;color:var(--text-sub);">识别答案已提交服务端入库（重复上传自动替换旧卡），客观题已按标准答案自动判分，主观题请到「学生考卷详情」人工评分。</div>
-  `;
-  showToast(`已识别 ${results.filter(r => !r.error).length} 名学生`);
+  const banner = okRows.length
+    ? `<div style="margin-bottom:8px;font-size:14px;">🤖 AI 识别完成：成功入库 ${okRows.length} 张${results.length > okRows.length ? '，失败 ' + (results.length - okRows.length) + ' 张' : ''}</div>`
+    : `<div style="margin-bottom:8px;font-size:14px;color:var(--error);">❌ AI 识别失败：未入库任何答题卡（共 ${results.length} 张全部失败）</div>`;
+  const footer = okRows.length
+    ? `<div style="margin-top:10px;font-size:13px;color:var(--text-sub);">成功各张的识别答案已提交服务端入库（重复上传自动替换旧卡），客观题已按标准答案自动判分，主观题请到「学生考卷详情」人工评分。失败各张请修正后重新上传。</div>`
+    : `<div style="margin-top:10px;font-size:13px;color:var(--error);">请根据上方失败原因处理后重试（失败的照片不会入库，学生状态保持待上传）。</div>`;
+  content.innerHTML = banner + rows + footer;
+  showToast(okRows.length ? '已入库 ' + okRows.length + ' 名学生答题卡' : 'AI 识别失败，未入库任何答题卡', okRows.length ? undefined : 'error');
   setTimeout(() => navigate('exam-task.detail', { id: task.id }), 2500);
 }
 
@@ -5725,8 +5726,8 @@ async function aiScoreTask(taskId) {
 }
 
 function renderStudentScore(params) {
-  const student = DATA.students.find(s => s.id === params.studentId) || DATA.students[0];
-  const task = DATA.tasks.find(t => t.id === params.taskId) || DATA.tasks[0];
+  const student = findStudentById(params.studentId);
+  const task = findTaskById(params.taskId);
   // Per-student answer sheet drives scores/photos
   let answerSheet = DATA.answerSheets.find(as => as.taskId === task.id && as.studentId === student.id);
   if (!answerSheet) {
@@ -5827,7 +5828,7 @@ function renderStudentScore(params) {
 function _currentStudentAnswerSheet() {
   const rp = STATE.routeParams || {};
   const task = DATA.tasks.find(t => t.id === rp.taskId) || DATA.tasks[0];
-  const student = DATA.students.find(s => s.id === rp.studentId) || DATA.students[0];
+  const student = findStudentById(rp.studentId);
   return { task, student, answerSheet: DATA.answerSheets.find(as => as.taskId === task.id && as.studentId === student.id) };
 }
 function confirmQuestionScore(idx) {
@@ -6060,31 +6061,25 @@ function renderStudentCreate() {
     </div>
   `;
 }
-function saveStudentCreate(autoCode) {
-  const name = (document.getElementById('stuName') || {}).value || '';
-  if (!name.trim()) { showToast('请填写姓名', 'error'); return; }
+async function saveStudentCreate(autoCode) {
+  const nameEl = document.getElementById('stuName');
+  const name = (nameEl || {}).value || '';
+  if (!name.trim()) { showToast('请填写学生姓名', 'error'); if (nameEl) { nameEl.style.borderColor = 'var(--error)'; nameEl.focus(); } return; }
   const gender = (document.querySelector('input[name="gender"]:checked') || {}).value || 'male';
-  const classId = (document.getElementById('stuClass') || {}).value || DATA.classes[0].id;
-  const cls = DATA.classes.find(c => c.id === classId) || DATA.classes[0];
-  const newId = 's' + Date.now();
-  const student = {
-    id: newId, code: autoCode || ('S' + String(DATA.students.length + 1).padStart(3, '0')),
-    name: name.trim(), gender: gender, classId: classId, className: cls.code + ' ' + cls.name,
-    birthDate: (document.getElementById('stuBirthDate') || {}).value || '',
-    enrollmentDate: (document.getElementById('stuEnrollmentDate') || {}).value || '',
-    parentName: (document.getElementById('stuParentName') || {}).value || '',
-    parentPhone: (document.getElementById('stuParentPhone') || {}).value || '',
-    initialEvaluation: (document.getElementById('stuInitialEvaluation') || {}).value || '',
-    examCount: 0, avgScore: 0, maxScore: 0, minScore: 0, participationRate: 0,
-    classRank: 0, lastScore: 0, lastExamDate: '', improvement: 'stable', lastRank: 0,
-    remark: (document.getElementById('stuRemark') || {}).value || '', status: 'active'
+  const classId = Number((document.getElementById('stuClass') || {}).value) || Number((DATA.classes[0] || {}).id);
+  if (!classId) { showToast('请选择班级', 'error'); return; }
+  const val = (id) => { const el = document.getElementById(id); const v = el ? el.value : ''; return (v && v.trim) ? v.trim() : v; };
+  const payload = {
+    name: name.trim(), gender: gender === 'female' ? 'female' : 'male', class_id: classId,
+    birth_date: val('stuBirthDate') || null, enrollment_date: val('stuEnrollmentDate') || null,
+    parent_name: val('stuParentName') || null, parent_phone: val('stuParentPhone') || null,
+    initial_evaluation: val('stuInitialEvaluation') || null, remark: val('stuRemark') || null,
   };
-  DATA.students.push(student);
-  saveLocalStudents();   // 持久化学生数据，防止刷新丢失
-  // 班级学生数 +1
-  cls.studentCount = (cls.studentCount || 0) + 1;
+  const saved = await apiPost('/students', payload);
+  if (!saved || !saved.id) { showToast('保存失败：服务端未确认写入，请检查网络后重试', 'error'); return; }
+  await loadBackendData();   // 以后端为准刷新列表与班级人数
   STATE.filteredStudents = null;
-  showToast('学生创建成功！编号 ' + student.code);
+  showToast('学生创建成功！学号 ' + (saved.studentCode || saved.student_code || ''));
   navigate('student');
 }
 
@@ -6092,7 +6087,7 @@ function saveStudentCreate(autoCode) {
    PAGE: STUDENT DETAIL (Full Dashboard - 10 dimensions)
    ================================================================ */
 function renderStudentDetail(params) {
-  let s = DATA.students.find(x => x.id === params.id) || DATA.students[0];
+  let s = findStudentById(params.id);
   const dash = _studentDash(s.id);
   const ss = _computeStudentStats(s);
   if (ss) s = Object.assign({}, s, ss);   // 用答题卡真实计算覆盖统计字段
@@ -6366,7 +6361,7 @@ function confirmDeleteEvaluation(sid, evid) {
 function savePostExamEvaluation() {
   const rp = STATE.routeParams || {};
   const task = DATA.tasks.find(t => t.id === rp.taskId) || DATA.tasks[0];
-  const student = DATA.students.find(s => s.id === rp.studentId) || DATA.students[0];
+  const student = findStudentById(rp.studentId);
   const answerSheet = DATA.answerSheets.find(as => as.taskId === task.id && as.studentId === student.id);
   const evaluation = ((document.getElementById('postExamEval') || {}).value || '').trim();
   if (!evaluation) { showToast('请填写考后评价', 'error'); return; }
@@ -6657,7 +6652,7 @@ async function saveClassCreate(defaultCode) {
    PAGE: CLASS DETAIL (Full Dashboard - 12 dimensions)
    ================================================================ */
 function renderClassDetail(params) {
-  const c = DATA.classes.find(x => x.id === params.id) || DATA.classes[0];
+  const c = findClassById(params.id);
   const dash = _classDash(c.id);
   const classStudents = DATA.students.filter(s => s.classId === c.id);
   const classAvg = dash.avgScore != null ? dash.avgScore : (classStudents.length ? (classStudents.reduce((a,s)=>a+((+s.avgScore)||0),0)/classStudents.length).toFixed(1) : '--');
@@ -7113,7 +7108,7 @@ function saveTeacherCreate() {
 }
 
 function renderTeacherDetail(params) {
-  let t = DATA.teachers.find(x => x.id === params.id) || DATA.teachers[0];
+  let t = findTeacherById(params.id);
   const ts = _computeTeacherStats(t);
   if (ts) t = Object.assign({}, t, ts);   // 用真实试卷/任务统计覆盖
   return `
@@ -8429,7 +8424,16 @@ window.addEventListener('load', async () => {
     STATE.permissions = (STATE.role === 'admin') ? null : (info.permissions || null);
     try {
       const me = await apiGet('/auth/me');
-      if (me && me.role === STATE.role && STATE.role !== 'admin') {
+      if (!me) {
+        // BUG修复(L018): token 失效(/auth/me 401)时必须回到登录页,
+        // 不得带着死 token 静默进入系统(界面全空、写操作全部静默失败)
+        try { localStorage.removeItem('wb_api_token'); localStorage.removeItem('wb_auth_info'); } catch (e) {}
+        if (typeof window.setApiToken === 'function') window.setApiToken(null);
+        document.getElementById('app').style.display = 'none';
+        document.getElementById('loginPage').style.display = 'flex';
+        return;
+      }
+      if (me.role === STATE.role && STATE.role !== 'admin') {
         STATE.permissions = me.permissions || STATE.permissions;
         try { const info2 = JSON.parse(localStorage.getItem('wb_auth_info') || 'null'); if (info2) { info2.permissions = STATE.permissions; localStorage.setItem('wb_auth_info', JSON.stringify(info2)); } } catch (e) {}
       }
