@@ -981,7 +981,7 @@ const ROUTES = {
   'system.question-type': { title:'题型管理', render: () => renderSystemDataPage('question-type'), menu:'系统设置' },
   'system.difficulty': { title:'难度管理', render: () => renderSystemDataPage('difficulty'), menu:'系统设置' },
   'system.user': { title:'用户管理', render: renderUserPage, menu:'系统设置' },
-  'system.ai-model': { title:'AI模型配置', render: renderAiModelConfig, menu:'系统设置' },
+  'system.ai-model': { title:'AI模型配置', render: renderAiModelConfig, afterRender: _aiSyncFromServer, menu:'系统设置' },
   'system.audit-log': { title:'操作日志', render: renderAuditLogPage, menu:'系统设置' },
   'system.backup': { title:'备份与恢复', render: renderBackup, menu:'系统设置' },
 };
@@ -7447,6 +7447,33 @@ function renderAiModelConfig() {
   `;
 }
 
+function _aiApplyServerConfig(d) {
+  // 服务端（数据库）配置回填：模型下拉同步；Key 不回填输入框（掩码值一旦被当作真实 Key
+  // 保存/传参会失效），只在状态栏展示掩码，输入框留空即表示"沿用服务端密钥"。
+  if (!d) return;
+  const v = d.vision || {}, r = d.reason || {};
+  const vp = document.getElementById('aiModelProvider');
+  if (vp && v.provider) { vp.value = v.provider; aiModelProviderChange(); }
+  const vm = document.getElementById('aiModelType');
+  if (vm && v.model && [...vm.options].some(o => o.value === v.model)) vm.value = v.model;
+  const vs = document.getElementById('aiModelStatus');
+  if (vs && v.api_key_set) vs.innerHTML = `<span class="badge badge-success">✅ 服务端已配置密钥（${v.source === 'db' ? '数据库' : 'env'}：${v.api_key_masked}），Key 留空即沿用</span>`;
+
+  const rp = document.getElementById('aiReasonProvider');
+  if (rp && r.provider) { rp.value = r.provider; aiReasonProviderChange(); }
+  const rm = document.getElementById('aiReasonModelType');
+  if (rm && r.model && [...rm.options].some(o => o.value === r.model)) rm.value = r.model;
+  const rs = document.getElementById('aiReasonStatus');
+  if (rs && r.api_key_set) rs.innerHTML = `<span class="badge badge-success">✅ 服务端已配置密钥（${r.source === 'db' ? '数据库' : 'env'}：${r.api_key_masked}），Key 留空即沿用</span>`;
+}
+
+function _aiSyncFromServer() {
+  if (typeof window.apiGet !== 'function') return;
+  window.apiGet('/settings/ai').then(d => {
+    _aiApplyServerConfig(d && d.data ? d.data : d);
+  }).catch(() => {});   // 未登录/非 admin 静默：保留本地配置
+}
+
 function aiModelProviderChange() {
   const provider = (document.getElementById('aiModelProvider') || {}).value;
   const preset = AI_MODEL_PRESETS.find(p => p.provider === provider);
@@ -7465,50 +7492,82 @@ function aiReasonProviderChange() {
   }
 }
 
+function _aiSaveToServer(visionPart, reasonPart, okMsg, statusEl) {
+  // 同步保存到服务端数据库（system_settings）；api_key 含 **** 的掩码回显值会被后端忽略
+  if (typeof window.apiPost !== 'function') return;
+  window.apiPost('/settings/ai', { vision: visionPart, reason: reasonPart }).then(d => {
+    if (statusEl) statusEl.innerHTML += ' <span class="badge badge-success">☁️ 已同步到服务端数据库</span>';
+    showToast(okMsg);
+    const data = d && d.data ? d.data : d;
+    if (data) _aiApplyServerConfig(data);
+  }).catch(err => {
+    const msg = (err && err.message) || '';
+    if (statusEl) statusEl.innerHTML += ` <span class="badge badge-warning">⚠ 服务端保存失败（${msg || '需管理员'}，仅本地生效）</span>`;
+  });
+}
+
 function saveAiModelConfig() {
   const provider = (document.getElementById('aiModelProvider') || {}).value || 'zhipu';
   const modelType = (document.getElementById('aiModelType') || {}).value;
-  const apiKey = (document.getElementById('aiModelApiKey') || {}).value || '';
-  // Key 可留空：服务端 AI_ZHIPU_API_KEY 兜底，避免凭证经浏览器传输
-  const cfg = { provider, modelType, apiKey: apiKey.trim(), enabled: true, isDefault: true, savedAt: new Date().toLocaleString('zh-CN') };
+  const apiKey = ((document.getElementById('aiModelApiKey') || {}).value || '').trim();
+  // Key 可留空：服务端数据库/env 兜底，避免凭证经浏览器传输
+  const cfg = { provider, modelType, apiKey, enabled: true, isDefault: true, savedAt: new Date().toLocaleString('zh-CN') };
   _saveAiModelConfig(cfg);
   const status = document.getElementById('aiModelStatus');
   if (status) status.innerHTML = `<span class="badge badge-success">✅ 已保存（${modelType}）</span> <span style="color:var(--text-sub);">${cfg.savedAt}</span>`;
-  showToast('视觉模型配置已保存');
+  const rcfg = _loadReasonModelConfig() || { provider:'zhipu', modelType:'glm-4-flash', apiKey:'' };
+  _aiSaveToServer(
+    { provider, model: modelType, api_key: apiKey },
+    { provider: rcfg.provider, model: rcfg.modelType, api_key: (rcfg.apiKey || '').trim() },
+    '视觉模型配置已保存', status);
 }
 
 function saveReasonModelConfig() {
   const provider = (document.getElementById('aiReasonProvider') || {}).value || 'zhipu';
   const modelType = (document.getElementById('aiReasonModelType') || {}).value;
-  const apiKey = (document.getElementById('aiReasonApiKey') || {}).value || '';
-  // Key 可留空：服务端 AI_ZHIPU_API_KEY 兜底，避免凭证经浏览器传输
-  const cfg = { provider, modelType, apiKey: apiKey.trim(), enabled: true, isDefault: true, savedAt: new Date().toLocaleString('zh-CN') };
+  const apiKey = ((document.getElementById('aiReasonApiKey') || {}).value || '').trim();
+  // Key 可留空：服务端数据库/env 兜底，避免凭证经浏览器传输
+  const cfg = { provider, modelType, apiKey, enabled: true, isDefault: true, savedAt: new Date().toLocaleString('zh-CN') };
   _saveReasonModelConfig(cfg);
   const status = document.getElementById('aiReasonStatus');
   if (status) status.innerHTML = `<span class="badge badge-success">✅ 已保存（${modelType}）</span> <span style="color:var(--text-sub);">${cfg.savedAt}</span>`;
-  showToast('推理模型配置已保存');
+  const vcfg = _loadAiModelConfig() || { provider:'zhipu', modelType:'glm-4v', apiKey:'' };
+  _aiSaveToServer(
+    { provider: vcfg.provider, model: vcfg.modelType, api_key: (vcfg.apiKey || '').trim() },
+    { provider, model: modelType, api_key: apiKey },
+    '推理模型配置已保存', status);
+}
+
+function _aiTestRemote(kind, provider, modelType, apiKey, statusEl) {
+  if (statusEl) statusEl.innerHTML = '<span class="badge badge-default">🔌 测试中…</span>';
+  window.apiPost('/settings/ai/test', { kind, provider, model: modelType, api_key: apiKey }).then(d => {
+    const r = d && d.data ? d.data : d;
+    if (statusEl) statusEl.innerHTML = `<span class="badge badge-success">✅ 连接正常</span> <span style="color:var(--text-sub);">provider=${provider}, model=${r.model || modelType}, 延迟=${r.latency_ms}ms, 密钥来源=${r.source === 'db' ? '数据库' : r.source === 'env' ? '服务端env' : '本页输入'}, 回复="${r.reply || ''}"</span>`;
+    showToast('测试连接成功');
+  }).catch(err => {
+    const msg = (err && err.message) || '未知错误';
+    if (statusEl) statusEl.innerHTML = `<span class="badge badge-error">❌ 连接失败</span> <span style="color:var(--error);">${msg}</span>`;
+    showToast('测试连接失败：' + msg, 'error');
+  });
 }
 
 function testAiModelConnection() {
-  const cfg = _loadAiModelConfig();
-  if (!cfg || !cfg.apiKey) { showToast('请先保存配置（填写 API Key）', 'error'); return; }
+  const provider = (document.getElementById('aiModelProvider') || {}).value || 'zhipu';
+  const modelType = (document.getElementById('aiModelType') || {}).value || 'glm-4v';
+  const apiKey = ((document.getElementById('aiModelApiKey') || {}).value || '').trim();
   const status = document.getElementById('aiModelStatus');
-  if (status) status.innerHTML = '<span class="badge badge-default">🔌 测试中…</span>';
-  setTimeout(() => {
-    if (status) status.innerHTML = `<span class="badge badge-success">✅ 连接正常</span> <span style="color:var(--text-sub);">provider=${cfg.provider}, model=${cfg.modelType}, key=${cfg.apiKey.slice(0,8)}…</span>`;
-    showToast('测试连接成功（桩，待接入真实 provider 调用）');
-  }, 800);
+  if (typeof window.apiPost !== 'function') { showToast('API 桥接未加载', 'error'); return; }
+  // Key 可留空：用服务端已保存配置测试（数据库/env）
+  _aiTestRemote('vision', provider, modelType, apiKey, status);
 }
 
 function testReasonModelConnection() {
-  const cfg = _loadReasonModelConfig();
-  if (!cfg || !cfg.apiKey) { showToast('请先保存配置（填写 API Key）', 'error'); return; }
+  const provider = (document.getElementById('aiReasonProvider') || {}).value || 'zhipu';
+  const modelType = (document.getElementById('aiReasonModelType') || {}).value || 'glm-4-flash';
+  const apiKey = ((document.getElementById('aiReasonApiKey') || {}).value || '').trim();
   const status = document.getElementById('aiReasonStatus');
-  if (status) status.innerHTML = '<span class="badge badge-default">🔌 测试中…</span>';
-  setTimeout(() => {
-    if (status) status.innerHTML = `<span class="badge badge-success">✅ 连接正常</span> <span style="color:var(--text-sub);">provider=${cfg.provider}, model=${cfg.modelType}, key=${cfg.apiKey.slice(0,8)}…</span>`;
-    showToast('测试连接成功（桩，待接入真实 provider 调用）');
-  }, 800);
+  if (typeof window.apiPost !== 'function') { showToast('API 桥接未加载', 'error'); return; }
+  _aiTestRemote('reason', provider, modelType, apiKey, status);
 }
 
 /* ================================================================

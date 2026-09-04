@@ -1,8 +1,17 @@
 # 修改清单 — 教研管理平台(AI学习诊断系统)
 
-> 版本: v2.1.3 | 日期: 2026-09-03
+> 版本: v2.1.4 | 日期: 2026-09-04
 
 ---
+
+## v2.1.4 — AI 密钥数据库化 + 设置接口 (2026-09-04)
+
+- **新增 `system_settings` 表(SystemSetting 模型)**: 键值型系统设置，启动期 create_all 幂等建表；键 `ai_vision_config` / `ai_reason_config`（JSON: provider/model/api_key）
+- **AI 密钥读取改为 DB 优先**: 三入口(答题卡识别 ai.py / AI选题 ai_select.py / 智能导入OCR import_export.py ×2)统一改走 `get_ai_config(db)`——数据库设置 > env `AI_ZHIPU_API_KEY` 回退 > 前端传入(兼容)；模型名同样 DB 优先
+- **新增设置路由 `routers/settings.py`**: `GET /settings/ai`(key 仅掩码回显) + `POST /settings/ai`(api_key 空值/掩码=保留原值) + `POST /settings/ai/test`(真实调用模型连通性测试，均限 admin)
+- **前端 AI模型配置页接线**: 渲染后拉取服务端配置回填(掩码只在状态栏展示不进输入框，防掩码值被当作真实 key)；保存=本地+服务端数据库双写；"测试连接"由假桩改为真实后端调用(显示延迟/密钥来源/回复)
+- **防误传防线**: 掩码回显值(含 `****`)在前后端均视为未传，不会覆盖/失效
+- **key 写入脚本 `backend/set_ai_settings.py`**: 幂等 upsert 智谱 GLM(视觉 glm-4v / 推理 glm-4-flash)；云端已执行入库并实测连通(glm-4v 876ms / glm-4-flash 1835ms，回复"正常")
 
 ## v2.1.3 — CRUD接线批: 评分链/教师建档/评价/复制任务 (2026-09-03)
 

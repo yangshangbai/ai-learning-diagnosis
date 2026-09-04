@@ -1,4 +1,4 @@
-from .system_models import SystemLog, User
+from .system_models import SystemLog, SystemSetting, User
 from .basic import Category
 from .teacher import Teacher, TeacherClass
 from .class_model import Class, ClassStatistic
@@ -11,6 +11,7 @@ from .exam import ExamTask, TaskAssignment, TaskStatistic, AnswerSheet, Question
 __all__ = [
     "User",
     "SystemLog",
+    "SystemSetting",
     "Category",
     "Teacher",
     "TeacherClass",

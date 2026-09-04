@@ -23,14 +23,25 @@ import zipfile
 
 from fastapi import APIRouter, Depends, UploadFile, File, Body, Form
 from fastapi.responses import Response, JSONResponse
+from sqlalchemy.orm import Session
 
+from ..core.app_settings import get_ai_config
 from ..core.config import settings
+from ..core.db import SessionLocal
 from ..core.errors import ValidationError
 from ..core.logging import logger
 from ..core.security import Principal, require_auth, require_permission
 from ..schemas.question import QUES_TYPES
 
 router = APIRouter(prefix="/api/v1/questions", tags=["question-import-export"])
+
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 # 项目根目录（向上三级：routers -> app -> backend -> 项目根）
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
@@ -457,13 +468,14 @@ async def import_ocr(
     model: str = Form("glm-4v"),
     base_url: str = Form(""),
     _: Principal = Depends(require_permission("sync", "add")),
+    db: Session = Depends(get_db),
 ):
     """上传 PDF/PNG/JPG → 云端视觉模型 OCR 识别为题目列表返回（source=ocr）。
 
     - PDF：逐页渲染为 PNG 后逐页识别，合并结果；
     - PNG/JPG：直接压缩后交给视觉模型；
-    - 模型凭据（provider/api_key/model）与「答题卡识别」共用同一套前端配置
-      （系统设置→AI模型配置，前端随请求传参）。
+    - 模型凭据优先取数据库设置（系统设置→AI模型配置·视觉模型），env 兜底；
+      前端随请求传参仍兼容。
     """
     filename = (file.filename or "").lower()
     ext = os.path.splitext(filename)[1].lower()
@@ -474,11 +486,16 @@ async def import_ocr(
     data = await file.read()
     if not data:
         return JSONResponse({"code": 400, "message": "上传文件为空", "data": None}, 400)
+    aicfg = get_ai_config(db)
+    vcfg = aicfg.get("vision") or {}
+    if "****" in (api_key or ""):   # 前端掩码回显值误传：视为未传
+        api_key = ""
     if not (api_key or "").strip():
-        if (provider or "").lower() == "zhipu" and settings.ai_zhipu_api_key:
-            api_key = settings.ai_zhipu_api_key   # 服务端统一密钥回退
+        if vcfg.get("api_key"):
+            api_key = vcfg["api_key"]   # 数据库设置（env 已在 get_ai_config 内回退）
         else:
             raise ValidationError("未配置视觉模型 API Key（系统设置→AI模型配置，或服务端 AI_ZHIPU_API_KEY）")
+    model = (vcfg.get("model") or "").strip() or model
 
     url = (base_url or "").strip() or _VISION_PROVIDERS.get((provider or "").lower())
     if not url:
@@ -1035,6 +1052,7 @@ async def import_smart(
     model: str = Form("glm-4v"),
     base_url: str = Form(""),
     _: Principal = Depends(require_permission("sync", "add")),
+    db: Session = Depends(get_db),
 ):
     """智能导入：上传任意常见文件 → 自动识别格式 → 自动路由解析 → 智能推断学科/年级。
 
@@ -1054,11 +1072,16 @@ async def import_smart(
 
     # ---------- OCR 类（pdf / png / jpg） ----------
     if fmt in ("pdf", "png", "jpg"):
+        aicfg = get_ai_config(db)
+        vcfg = aicfg.get("vision") or {}
+        if "****" in (api_key or ""):   # 前端掩码回显值误传：视为未传
+            api_key = ""
         if not (api_key or "").strip():
-            if (provider or "").lower() == "zhipu" and settings.ai_zhipu_api_key:
-                api_key = settings.ai_zhipu_api_key   # 服务端统一密钥回退
+            if vcfg.get("api_key"):
+                api_key = vcfg["api_key"]   # 数据库设置（env 已在 get_ai_config 内回退）
             else:
                 raise ValidationError("图片/PDF 识别需要先配置视觉模型 API Key（系统设置→AI模型配置，或服务端 AI_ZHIPU_API_KEY）")
+        model = (vcfg.get("model") or "").strip() or model
         url = (base_url or "").strip() or _VISION_PROVIDERS.get((provider or "").lower())
         if not url:
             raise ValidationError("不支持的视觉模型 provider：%s（可传 base_url 覆盖）" % provider)

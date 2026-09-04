@@ -20,8 +20,8 @@ from sqlalchemy import desc, or_
 from sqlalchemy.orm import Session
 
 from .. import models
+from ..core.app_settings import get_ai_config
 from ..core.db import SessionLocal
-from ..core.config import settings
 from ..core.errors import NotFoundError, ValidationError
 from ..core.logging import logger
 from ..core.security import Principal, require_auth, require_permission
@@ -389,14 +389,22 @@ def _ai_pick(body: SelectQuestionsBody, candidates: List[dict]) -> List[str]:
 # ---------------- 端点 ----------------
 @router.post("/select-questions")
 def select_questions(body: SelectQuestionsBody, principal: Principal = Depends(require_permission("ai_select", "add")), db: Session = Depends(get_db)):
-    if not body.api_key and not settings.ai_zhipu_api_key:
+    # 密钥优先级：前端传入 > 数据库设置（系统设置→AI模型配置·推理模型）> 服务端 env
+    aicfg = get_ai_config(db)
+    rcfg = aicfg.get("reason") or {}
+    server_key = (rcfg.get("api_key") or "").strip()
+    if "****" in (body.api_key or ""):   # 前端掩码回显值误传：视为未传
+        body.api_key = ""
+    if not body.api_key and not server_key:
         raise ValidationError("未配置 AI 模型 API Key（系统设置→AI模型配置，或服务端 AI_ZHIPU_API_KEY）")
     if not body.api_key:
-        # 服务端统一密钥：推理模型切换为智谱文本模型（服务端仅托管智谱 Key）
+        # 服务端统一密钥：推理模型切换为智谱文本模型；模型名优先取数据库设置
         body.provider = "zhipu"
         if "deepseek" in (body.model or "") or not (body.model or ""):
             body.model = "glm-4-flash"
-        body.api_key = settings.ai_zhipu_api_key
+        if (rcfg.get("model") or "").strip():
+            body.model = rcfg["model"].strip()
+        body.api_key = server_key
     if not body.type_config:
         raise ValidationError("请设置各题型题量")
 

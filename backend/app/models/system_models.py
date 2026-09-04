@@ -39,6 +39,27 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), nullable=True)
 
 
+class SystemSetting(Base):
+    """系统设置键值表：AI 模型配置等服务端运行时设置（数据库为唯一事实，env 仅作回退）。
+
+    - skey 固定键名（如 ai_vision_config / ai_reason_config）；
+    - svalue 为 JSON 对象（如 {provider, model, api_key}）；
+    - 仅 admin 可读写（routers/settings.py 控制权限）。
+    """
+
+    __tablename__ = "system_settings"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    skey = Column(String(100), unique=True, nullable=False, index=True)
+    svalue = Column(JSON, nullable=True)
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.datetime.now(datetime.timezone.utc),
+        onupdate=lambda: datetime.datetime.now(datetime.timezone.utc),
+        nullable=False,
+    )
+
+
 class SystemLog(Base):
     __tablename__ = "system_logs"
 
