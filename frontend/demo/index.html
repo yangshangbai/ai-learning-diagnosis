@@ -984,6 +984,8 @@ const ROUTES = {
   'system.ai-model': { title:'AI模型配置', render: renderAiModelConfig, afterRender: _aiSyncFromServer, menu:'系统设置' },
   'system.audit-log': { title:'操作日志', render: renderAuditLogPage, menu:'系统设置' },
   'system.backup': { title:'备份与恢复', render: renderBackup, menu:'系统设置' },
+  'issues': { title:'需求列表', render: renderIssueList, afterRender: afterRenderIssueList, menu:'问题需求' },
+  'issues.create': { title:'提交问题需求', render: renderIssueCreate, menu:'问题需求' },
 };
 
 function navigate(route, params={}) {
@@ -1102,6 +1104,12 @@ function renderSidebar() {
       </div>` : ''}
     </div>
     ` : ''}
+    <div class="nav-group">
+      <div class="nav-group-title">问题需求</div>
+      <div class="nav-item" data-route="issues" onclick="navigate('issues')">
+        <span class="icon">📝</span> 需求列表
+      </div>
+    </div>
     ${showSystem ? `
     <div class="nav-group">
       <div class="nav-group-title">系统设置</div>
@@ -7315,6 +7323,303 @@ async function teacherUnlinkClass(id, idx) {
   }
   navigate('teacher.detail', { id: t.id });
   showToast('已取消关联');
+}
+
+/* ================================================================
+   PAGE: ISSUES（问题需求：列表 + 提交 + 详情 + 图片放大）
+   数据全部走后端 /issues（登录即可提交/查看；状态流转 admin）
+   ================================================================ */
+const ISSUE_MODULES = ['题库管理','试卷管理','考试任务','学生管理','班级管理','教师管理','AI评分','AI选题','系统设置','其他'];
+const ISSUE_STATUS = {
+  pending:   { label:'待处理', badge:'badge-warning' },
+  processing:{ label:'处理中', badge:'badge-default' },
+  done:      { label:'已完成', badge:'badge-success' },
+};
+const _issueState = { page:1, pageSize:10, total:0, status:'', module:'', keyword:'', createImages:[] };
+
+function _issueStatusBadge(s) {
+  const m = ISSUE_STATUS[s] || { label:s, badge:'badge-default' };
+  return `<span class="badge ${m.badge}">${m.label}</span>`;
+}
+
+function renderIssueList() {
+  _issueState.page = 1;
+  return `
+  <style>
+    .issue-responsive td { white-space:nowrap; }
+    .issue-desc-cell { max-width:260px; overflow:hidden; text-overflow:ellipsis; }
+    @media (max-width:768px) {
+      .issue-responsive thead { display:none; }
+      .issue-responsive tr { display:block; border:1px solid var(--border); border-radius:10px; margin-bottom:10px; padding:6px 10px; }
+      .issue-responsive td { display:flex; justify-content:space-between; align-items:center; white-space:normal; border:none !important; padding:5px 2px !important; }
+      .issue-responsive td::before { content:attr(data-label); color:var(--text-sub); font-size:12px; font-weight:600; flex-shrink:0; margin-right:12px; }
+      .issue-responsive td.issue-no-label::before { content:''; margin:0; }
+    }
+  </style>
+  <div class="page-header">
+    <h2>问题需求</h2>
+    <div class="actions">
+      <button class="btn btn-primary" onclick="navigate('issues.create')">+ 提交问题需求</button>
+    </div>
+  </div>
+  <div class="card">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
+      <select id="issueFilterStatus" class="form-input" style="max-width:140px;" onchange="_issueFilterChange()">
+        <option value="">全部状态</option>
+        ${Object.entries(ISSUE_STATUS).map(([k,v]) => `<option value="${k}">${v.label}</option>`).join('')}
+      </select>
+      <select id="issueFilterModule" class="form-input" style="max-width:150px;" onchange="_issueFilterChange()">
+        <option value="">全部模块</option>
+        ${ISSUE_MODULES.map(m => `<option value="${m}">${m}</option>`).join('')}
+      </select>
+      <input id="issueFilterKeyword" class="form-input" style="max-width:220px;flex:1;" placeholder="搜索标题 / 说明 / Case 编号" onkeydown="if(event.key==='Enter')_issueFilterChange()">
+      <button class="btn" onclick="_issueFilterChange()">🔍 查询</button>
+    </div>
+    <div class="table-wrap issue-responsive">
+      <table class="data-table">
+        <thead><tr><th>Case</th><th>标题</th><th>问题模块</th><th>状态</th><th>创建人</th><th>创建时间</th><th>完成时间</th><th>操作</th></tr></thead>
+        <tbody id="issueTableBody"><tr><td colspan="8" style="text-align:center;color:var(--text-sub);">加载中…</td></tr></tbody>
+      </table>
+    </div>
+    <div id="issuePager" style="margin-top:12px;"></div>
+  </div>`;
+}
+
+function _issueFilterChange() {
+  _issueState.status = (document.getElementById('issueFilterStatus') || {}).value || '';
+  _issueState.module = (document.getElementById('issueFilterModule') || {}).value || '';
+  _issueState.keyword = ((document.getElementById('issueFilterKeyword') || {}).value || '').trim();
+  _issueState.page = 1;
+  _issueLoadList();
+}
+
+function _apiErrMsg(d, fallback) {
+  // api-bridge 的 apiGet/apiPost/apiPatch 失败返回 null，错误详情在 window._lastApiError
+  if (d) return '';
+  const e = window._lastApiError || {};
+  return (e.message && e.message !== 'network') ? e.message : (fallback || '网络错误');
+}
+
+async function _issueLoadList() {
+  const body = document.getElementById('issueTableBody');
+  if (!body || typeof window.apiGet !== 'function') return;
+  const qs = `?page=${_issueState.page}&page_size=${_issueState.pageSize}` +
+    (_issueState.status ? `&status=${encodeURIComponent(_issueState.status)}` : '') +
+    (_issueState.module ? `&module=${encodeURIComponent(_issueState.module)}` : '') +
+    (_issueState.keyword ? `&keyword=${encodeURIComponent(_issueState.keyword)}` : '');
+  try {
+    const d = await window.apiGet('/issues' + qs);
+    if (!d) throw new Error(_apiErrMsg(d, '加载失败'));
+    const data = d && d.data ? d.data : d;
+    _issueState.total = data.total || 0;
+    const items = data.items || [];
+    if (!items.length) {
+      body.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-sub);padding:24px 0;">暂无问题需求，点击右上角「提交问题需求」创建</td></tr>';
+    } else {
+      body.innerHTML = items.map(i => {
+        const canDelete = STATE.role === 'admin' || (i.created_by === STATE.currentUserId && i.status === 'pending');
+        return `<tr>
+          <td class="issue-no-label" data-label="Case"><b>${i.case_no}</b></td>
+          <td class="issue-desc-cell" data-label="标题" style="cursor:pointer;color:var(--primary);" onclick="openIssueDetail(${i.id})">${i.title}</td>
+          <td data-label="问题模块">${i.module || '--'}</td>
+          <td data-label="状态">${_issueStatusBadge(i.status)}</td>
+          <td data-label="创建人">${i.created_by_name || '--'}</td>
+          <td data-label="创建时间">${fmtDT(i.created_at)}</td>
+          <td data-label="完成时间">${i.status==='done' ? fmtDT(i.completed_at) : '--'}</td>
+          <td data-label="操作"><button class="btn btn-sm btn-text" onclick="openIssueDetail(${i.id})">详情</button>${canDelete?`<button class="btn btn-sm btn-text" style="color:var(--error);" onclick="deleteIssue(${i.id})">删除</button>`:''}</td>
+        </tr>`;
+      }).join('');
+    }
+    _issueRenderPager();
+  } catch (err) {
+    body.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--error);">加载失败：${(err && err.message) || '未知错误'}</td></tr>`;
+  }
+}
+
+function _issueRenderPager() {
+  const el = document.getElementById('issuePager');
+  if (!el) return;
+  const totalPages = Math.max(1, Math.ceil(_issueState.total / _issueState.pageSize));
+  if (totalPages <= 1) { el.innerHTML = `<span style="color:var(--text-sub);font-size:13px;">共 ${_issueState.total} 条</span>`; return; }
+  let html = `<span style="color:var(--text-sub);font-size:13px;margin-right:10px;">共 ${_issueState.total} 条</span>`;
+  for (let p = 1; p <= totalPages; p++) {
+    html += `<button class="btn btn-sm ${p===_issueState.page?'btn-primary':''}" onclick="_issueGotoPage(${p})">${p}</button> `;
+  }
+  el.innerHTML = html;
+}
+function _issueGotoPage(p) { _issueState.page = p; _issueLoadList(); }
+
+function afterRenderIssueList() {
+  // 回填筛选条件（从创建页返回时保留）
+  const s = document.getElementById('issueFilterStatus');
+  const m = document.getElementById('issueFilterModule');
+  if (s) s.value = _issueState.status;
+  if (m) m.value = _issueState.module;
+  _issueLoadList();
+}
+
+async function deleteIssue(id) {
+  if (!confirm('确定删除该问题需求？删除后不可恢复。')) return;
+  try {
+    const resp = await fetch(window.API_BASE + '/issues/' + id, { method:'DELETE', headers:_authHeaders() });
+    const d = await resp.json().catch(() => null);
+    if (!resp.ok || (d && d.code !== 0)) throw new Error((d && d.message) || ('HTTP ' + resp.status));
+    showToast('已删除');
+    _issueLoadList();
+  } catch (err) {
+    showToast('删除失败：' + ((err && err.message) || ''), 'error');
+  }
+}
+
+/* ---------- 详情弹窗（含图片放大） ---------- */
+async function openIssueDetail(id) {
+  try {
+    const d = await window.apiGet('/issues/' + id);
+    if (!d) throw new Error(_apiErrMsg(d, '加载失败'));
+    const i = d && d.data ? d.data : d;
+    const imgs = (i.images || []).map(u =>
+      `<div style="position:relative;"><img src="${u}" onclick="issueLightbox('${u}')" style="width:120px;height:120px;object-fit:cover;border-radius:8px;cursor:zoom-in;border:1px solid var(--border);"></div>`
+    ).join('');
+    const isAdmin = STATE.role === 'admin';
+    const flowBtns = isAdmin && i.status !== 'done' ? `
+      <button class="btn btn-sm ${i.status==='pending'?'btn-primary':''}" onclick="changeIssueStatus(${i.id},'processing')">▶ 开始处理</button>
+      <button class="btn btn-sm btn-primary" onclick="changeIssueStatus(${i.id},'done')">✅ 标记完成</button>` : '';
+    const backBtn = isAdmin && i.status !== 'pending' ? `<button class="btn btn-sm" onclick="changeIssueStatus(${i.id},'pending')">↩ 退回待处理</button>` : '';
+    openModal(`问题需求 · ${i.case_no}`, `
+      <div style="display:grid;grid-template-columns:110px 1fr;gap:8px 14px;font-size:14px;align-items:start;">
+        <b>标题</b><div>${i.title}</div>
+        <b>问题模块</b><div>${i.module}</div>
+        <b>状态</b><div>${_issueStatusBadge(i.status)}${i.status==='done'?` <span style="color:var(--text-sub);font-size:12px;">完成于 ${fmtDT(i.completed_at)}</span>`:''}</div>
+        <b>创建人</b><div>${i.created_by_name || '--'}</div>
+        <b>创建时间</b><div>${fmtDT(i.created_at)}</div>
+        <b>说明内容</b><div style="white-space:pre-wrap;line-height:1.7;background:var(--bg);padding:10px;border-radius:8px;">${i.description || '（无）'}</div>
+        <b>图片（${(i.images||[]).length}）</b><div style="display:flex;gap:8px;flex-wrap:wrap;">${imgs || '<span style="color:var(--text-sub);">无</span>'}</div>
+      </div>
+      <p style="font-size:12px;color:var(--text-sub);margin:10px 0 0;">点击图片可放大查看</p>
+    `, `${flowBtns} ${backBtn} <button class="btn" onclick="closeModal()">关闭</button>`);
+  } catch (err) {
+    showToast('加载详情失败：' + ((err && err.message) || ''), 'error');
+  }
+}
+
+async function changeIssueStatus(id, status) {
+  try {
+    const d = await window.apiPatch('/issues/' + id, { status });
+    if (!d) throw new Error(_apiErrMsg(d, '状态更新失败'));
+    showToast('状态已更新为「' + (ISSUE_STATUS[status]||{}).label + '」');
+    closeModal();
+    _issueLoadList();
+  } catch (err) {
+    showToast((err && err.message) || '状态更新失败', 'error');
+  }
+}
+
+function issueLightbox(url) {
+  let lb = document.getElementById('issueLightbox');
+  if (!lb) {
+    lb = document.createElement('div');
+    lb.id = 'issueLightbox';
+    lb.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:9999;display:flex;align-items:center;justify-content:center;cursor:zoom-out;';
+    lb.onclick = () => { lb.style.display = 'none'; };
+    lb.innerHTML = '<img id="issueLightboxImg" style="max-width:92vw;max-height:92vh;border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,.5);">';
+    document.body.appendChild(lb);
+  }
+  document.getElementById('issueLightboxImg').src = url;
+  lb.style.display = 'flex';
+}
+
+/* ---------- 提交问题需求（多图上传·提交前可删除） ---------- */
+function renderIssueCreate() {
+  _issueState.createImages = [];
+  return `
+  <div class="page-header"><h2>提交问题需求</h2></div>
+  <div class="card" style="max-width:760px;">
+    <div class="form-row"><label>标题 <span style="color:var(--error);">*</span></label><div class="form-input">
+      <input type="text" id="issueTitle" class="form-input" maxlength="200" placeholder="一句话概括问题（≤200字）">
+    </div></div>
+    <div class="form-row"><label>问题模块 <span style="color:var(--error);">*</span></label><div class="form-input">
+      <select id="issueModule" class="form-input">
+        ${ISSUE_MODULES.map(m => `<option value="${m}">${m}</option>`).join('')}
+      </select>
+    </div></div>
+    <div class="form-row"><label>说明内容</label><div class="form-input">
+      <textarea id="issueDesc" class="form-input" rows="6" maxlength="500" placeholder="详细描述问题现象、复现步骤、期望效果（≤500字）" oninput="document.getElementById('issueDescCount').textContent=this.value.length+'/500'"></textarea>
+      <div style="text-align:right;font-size:12px;color:var(--text-sub);margin-top:4px;"><span id="issueDescCount">0/500</span></div>
+    </div></div>
+    <div class="form-row"><label>截图 / 图片</label><div class="form-input">
+      <input type="file" id="issueImages" accept="image/png,image/jpeg,image/webp" multiple style="font-size:13px;" onchange="issueUploadImages(this)">
+      <div style="font-size:12px;color:var(--text-sub);margin-top:4px;">最多 9 张，单张 ≤10MB；上传后点击图片右上角 × 可在提交前删除</div>
+      <div id="issueImgPreview" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;"></div>
+    </div></div>
+    <div style="display:flex;gap:12px;margin-top:16px;">
+      <button class="btn btn-primary" id="issueSubmitBtn" onclick="submitIssue()">📤 提交</button>
+      <button class="btn" onclick="navigate('issues')">返回列表</button>
+    </div>
+    <div id="issueCreateStatus" style="margin-top:10px;font-size:13px;"></div>
+  </div>`;
+}
+
+function _issueRenderPreviews() {
+  const box = document.getElementById('issueImgPreview');
+  if (!box) return;
+  box.innerHTML = _issueState.createImages.map((u, idx) => `
+    <div style="position:relative;display:inline-block;">
+      <img src="${u}" onclick="issueLightbox('${u}')" style="width:88px;height:88px;object-fit:cover;border-radius:8px;cursor:zoom-in;border:1px solid var(--border);">
+      <button onclick="_issueRemoveImage(${idx})" title="删除图片" style="position:absolute;top:-7px;right:-7px;width:22px;height:22px;border-radius:50%;border:none;background:var(--error);color:#fff;font-size:13px;line-height:1;cursor:pointer;">×</button>
+    </div>`).join('');
+}
+
+function _issueRemoveImage(idx) {
+  _issueState.createImages.splice(idx, 1);
+  _issueRenderPreviews();
+}
+
+async function issueUploadImages(input) {
+  const files = Array.from(input.files || []);
+  input.value = '';
+  if (!files.length) return;
+  const remain = 9 - _issueState.createImages.length;
+  if (remain <= 0) { showToast('最多上传 9 张图片', 'error'); return; }
+  const status = document.getElementById('issueCreateStatus');
+  for (const f of files.slice(0, remain)) {
+    if (f.size > 10 * 1024 * 1024) { showToast(`「${f.name}」超过 10MB，已跳过`, 'error'); continue; }
+    if (status) status.innerHTML = `<span class="badge badge-default">⏳ 正在上传 ${f.name}…</span>`;
+    const fd = new FormData();
+    fd.append('file', f);
+    try {
+      const resp = await fetch(window.API_BASE + '/issues/upload-image', { method:'POST', headers:_authHeaders(), body: fd });
+      const d = await resp.json();
+      if (!resp.ok || d.code !== 0) throw new Error(d.message || ('HTTP ' + resp.status));
+      _issueState.createImages.push(d.data.url);
+      _issueRenderPreviews();
+    } catch (err) {
+      showToast(`上传 ${f.name} 失败：${(err && err.message) || ''}`, 'error');
+    }
+  }
+  if (status) status.innerHTML = `<span class="badge badge-success">已上传 ${_issueState.createImages.length}/9 张</span>`;
+}
+
+async function submitIssue() {
+  const title = ((document.getElementById('issueTitle') || {}).value || '').trim();
+  const module = (document.getElementById('issueModule') || {}).value || '其他';
+  const description = ((document.getElementById('issueDesc') || {}).value || '').trim();
+  const status = document.getElementById('issueCreateStatus');
+  if (!title) { showToast('请填写标题', 'error'); return; }
+  if (description.length > 500) { showToast('说明内容不能超过 500 字', 'error'); return; }
+  const btn = document.getElementById('issueSubmitBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '提交中…'; }
+  try {
+    const d = await window.apiPost('/issues', { title, module, description, images: _issueState.createImages });
+    if (!d) throw new Error(_apiErrMsg(d, '提交失败'));
+    showToast('问题需求已提交（状态：待处理）');
+    navigate('issues');
+  } catch (err) {
+    const msg = (err && err.message) || '提交失败';
+    if (status) status.innerHTML = `<span class="badge badge-error">提交失败：${msg}</span>`;
+    showToast('提交失败：' + msg, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '📤 提交'; }
+  }
 }
 
 /* ================================================================

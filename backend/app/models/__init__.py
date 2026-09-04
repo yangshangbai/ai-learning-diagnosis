@@ -7,11 +7,13 @@ from .question import Question, QuestionImage, ImportLog
 from .tag import Tag
 from .paper import Paper, PaperQuestion, AnswerSheetTemplate, PaperTemplate, PaperDraft, AiSelectionBank
 from .exam import ExamTask, TaskAssignment, TaskStatistic, AnswerSheet, QuestionScore
+from .issue import Issue
 
 __all__ = [
     "User",
     "SystemLog",
     "SystemSetting",
+    "Issue",
     "Category",
     "Teacher",
     "TeacherClass",
